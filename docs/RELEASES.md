@@ -67,6 +67,14 @@ Da `v0.2.3`, il watch logga tutti i permessi sensore rilevanti, richiede quelli 
 
 Da `v0.2.4`, se `BODY_SENSORS` resta negato dopo la richiesta runtime, il watch apre direttamente le impostazioni app per abilitarlo manualmente. Gli update APK ricevuti via telefono vengono eliminati dal Data Layer dopo il salvataggio locale per evitare ricezioni duplicate e `Buffer is closed`.
 
+Se Wear OS non mostra il toggle `Body sensors`, usare ADB in modalita' sviluppo sul watch:
+
+```powershell
+.\scripts\grant-watch-permissions.ps1 -DeviceId <WATCH_ADB_ID>
+```
+
+Questo usa `pm grant`, non root o patch di sistema. Serve solo per test/dev su dispositivo personale.
+
 ## Migrazione v0.1.1
 Wear Data Layer richiede stesso package name e stessa firma tra telefono e orologio. Da `v0.1.1`, anche l'APK watch usa:
 
