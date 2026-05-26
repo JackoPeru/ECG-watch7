@@ -34,3 +34,17 @@ Android chiedera' conferma installazione e, al primo uso, permesso per installar
 ## Watch
 Il watch ha lo stesso flusso. Wear OS puo' comunque mostrare schermate di permesso/installer diverse dal telefono; se il sistema blocca install da sorgenti sconosciute sul watch, serve una prima abilitazione manuale.
 
+## Migrazione v0.1.1
+Wear Data Layer richiede stesso package name e stessa firma tra telefono e orologio. Da `v0.1.1`, anche l'APK watch usa:
+
+```text
+com.galaxywatch7.health.mobile
+```
+
+Se sul watch e' installata `v0.1.0`, disinstalla prima il vecchio pacchetto:
+
+```powershell
+adb -s <WATCH_ID> uninstall com.galaxywatch7.health.wear
+```
+
+Poi installa `Watch7Health-wear-0.1.1.apk`. Le versioni successive potranno usare updater interno.

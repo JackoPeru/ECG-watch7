@@ -3,9 +3,12 @@ package com.galaxywatch7.health.mobile
 import android.app.Activity
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.graphics.pdf.PdfDocument
 import android.os.Bundle
 import android.os.Environment
+import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
@@ -21,6 +24,7 @@ import com.galaxywatch7.health.shared.EcgBinaryCodec
 import com.galaxywatch7.health.shared.EcgSessionMetadata
 import com.galaxywatch7.health.shared.HealthJson
 import com.galaxywatch7.health.shared.PpgMetrics
+import com.galaxywatch7.health.shared.WatchLogEntry
 import com.galaxywatch7.health.shared.WearPaths
 import com.galaxywatch7.health.shared.updates.GitHubReleaseUpdater
 import com.galaxywatch7.health.shared.updates.UpdateCheckResult
@@ -29,6 +33,7 @@ import com.google.android.gms.wearable.Asset
 import com.google.android.gms.wearable.DataClient
 import com.google.android.gms.wearable.DataEvent
 import com.google.android.gms.wearable.DataEventBuffer
+import com.google.android.gms.wearable.DataItem
 import com.google.android.gms.wearable.DataMapItem
 import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.MessageEvent
@@ -42,6 +47,8 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
     private lateinit var sessions: TextView
     private lateinit var bp: TextView
     private lateinit var updateStatus: TextView
+    private lateinit var linkStatus: TextView
+    private lateinit var logs: TextView
     private lateinit var chart: EcgChartView
     private val io = Executors.newSingleThreadExecutor()
     private var selectedSession: EcgSessionMetadata? = null
@@ -60,6 +67,8 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
         super.onResume()
         Wearable.getDataClient(this).addListener(this)
         Wearable.getMessageClient(this).addListener(this)
+        refreshLinkStatus()
+        loadExistingWearData()
     }
 
     override fun onPause() {
@@ -73,7 +82,12 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
             if (event.type == DataEvent.TYPE_CHANGED &&
                 event.dataItem.uri.path?.startsWith(WearPaths.DATA_ECG_SESSION_PREFIX) == true
             ) {
-                receiveEcgSession(event)
+                receiveEcgDataItem(event.dataItem)
+            }
+            if (event.type == DataEvent.TYPE_CHANGED &&
+                event.dataItem.uri.path?.startsWith(WearPaths.DATA_WATCH_LOG_PREFIX) == true
+            ) {
+                receiveWatchLog(event)
             }
         }
     }
@@ -86,36 +100,46 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
     }
 
     private fun buildUi(): ScrollView {
+        val dp = resources.displayMetrics.density
+        fun Int.dp(): Int = (this * dp).toInt()
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(28, 28, 28, 28)
+            setPadding(24.dp(), 24.dp(), 24.dp(), 32.dp())
+            setBackgroundColor(Color.rgb(246, 248, 251))
         }
         fun label(text: String): TextView = TextView(this).apply {
             this.text = text
-            textSize = 16f
+            textSize = 15f
             setTextColor(Color.rgb(35, 39, 45))
-            setPadding(0, 12, 0, 8)
+            setPadding(0, 10.dp(), 0, 6.dp())
         }
 
         root.addView(TextView(this).apply {
-            text = "Watch7 Health"
-            textSize = 26f
-            setTextColor(Color.rgb(11, 122, 117))
+            text = "ECG Watch7"
+            textSize = 30f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.rgb(15, 23, 42))
         })
-        root.addView(label("Wellness/research only. Not for diagnosis or treatment."))
-        status = label("Waiting for watch data.")
+        root.addView(TextView(this).apply {
+            text = "Wellness/research only. Not for diagnosis."
+            textSize = 13f
+            setTextColor(Color.rgb(100, 116, 139))
+        })
+        linkStatus = cardText("Link watch: checking...")
+        root.addView(linkStatus)
+        status = cardText("Waiting for watch data.")
         root.addView(status)
 
-        val systolic = EditText(this).apply { hint = "Cuff systolic"; inputType = android.text.InputType.TYPE_CLASS_NUMBER }
-        val diastolic = EditText(this).apply { hint = "Cuff diastolic"; inputType = android.text.InputType.TYPE_CLASS_NUMBER }
-        val pulse = EditText(this).apply { hint = "Cuff pulse"; inputType = android.text.InputType.TYPE_CLASS_NUMBER }
-        val wrist = EditText(this).apply { hint = "Watch wrist: left/right"; setText("left") }
+        root.addView(sectionTitle("BP calibration"))
+        val systolic = input("Cuff systolic")
+        val diastolic = input("Cuff diastolic")
+        val pulse = input("Cuff pulse")
+        val wrist = input("Watch wrist: left/right", numeric = false).apply { setText("left") }
         root.addView(systolic)
         root.addView(diastolic)
         root.addView(pulse)
         root.addView(wrist)
-        root.addView(Button(this).apply {
-            text = "Save cuff calibration"
+        root.addView(primaryButton("Save cuff calibration").apply {
             setOnClickListener {
                 val calibration = BpCalibration(
                     systolic = systolic.text.toString().toIntOrNull() ?: return@setOnClickListener,
@@ -132,37 +156,86 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
         bp = label("No BP estimate yet.")
         root.addView(bp)
         chart = EcgChartView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 420)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 360.dp())
+            background = round(Color.WHITE, 18.dp())
         }
+        root.addView(sectionTitle("ECG sessions"))
         root.addView(chart)
         sessions = label("")
         root.addView(sessions)
-        root.addView(Button(this).apply {
-            text = "Export selected CSV/PDF"
+        root.addView(primaryButton("Export selected CSV/PDF").apply {
             setOnClickListener { exportSelected() }
         })
-        root.addView(label("Updates"))
-        updateStatus = label("Version ${BuildConfig.VERSION_NAME}. Release GitHub non controllata.")
+        root.addView(sectionTitle("Watch logs"))
+        logs = cardText(readLogs().ifBlank { "No watch logs yet." })
+        root.addView(logs)
+        root.addView(primaryButton("Refresh link/logs").apply {
+            setOnClickListener {
+                refreshLinkStatus()
+                loadExistingWearData()
+            }
+        })
+        root.addView(sectionTitle("Updates"))
+        updateStatus = cardText("Version ${BuildConfig.VERSION_NAME}. Release GitHub non controllata.")
         root.addView(updateStatus)
-        root.addView(Button(this).apply {
-            text = "Check GitHub release"
+        root.addView(primaryButton("Check GitHub release").apply {
             setOnClickListener { checkForUpdate() }
         })
-        root.addView(Button(this).apply {
-            text = "Download update"
+        root.addView(primaryButton("Download update").apply {
             setOnClickListener { downloadUpdate() }
         })
-        root.addView(Button(this).apply {
-            text = "Install update"
+        root.addView(primaryButton("Install update").apply {
             setOnClickListener { installUpdate() }
         })
 
         return ScrollView(this).apply { addView(root) }
     }
 
-    private fun receiveEcgSession(event: DataEvent) {
+    private fun sectionTitle(textValue: String): TextView = TextView(this).apply {
+        text = textValue
+        textSize = 18f
+        typeface = Typeface.DEFAULT_BOLD
+        setTextColor(Color.rgb(15, 23, 42))
+        setPadding(0, 22, 0, 8)
+    }
+
+    private fun cardText(textValue: String): TextView = TextView(this).apply {
+        val dp = resources.displayMetrics.density
+        fun Int.dp(): Int = (this * dp).toInt()
+        text = textValue
+        textSize = 14f
+        setTextColor(Color.rgb(30, 41, 59))
+        setPadding(16.dp(), 14.dp(), 16.dp(), 14.dp())
+        background = round(Color.WHITE, 18.dp())
+    }
+
+    private fun input(hintValue: String, numeric: Boolean = true): EditText = EditText(this).apply {
+        val dp = resources.displayMetrics.density
+        fun Int.dp(): Int = (this * dp).toInt()
+        hint = hintValue
+        inputType = if (numeric) android.text.InputType.TYPE_CLASS_NUMBER else android.text.InputType.TYPE_CLASS_TEXT
+        textSize = 15f
+        setPadding(14.dp(), 6.dp(), 14.dp(), 6.dp())
+        background = round(Color.WHITE, 14.dp())
+    }
+
+    private fun primaryButton(textValue: String): Button = Button(this).apply {
+        text = textValue
+        textSize = 14f
+        setTextColor(Color.WHITE)
+        gravity = Gravity.CENTER
+        background = round(Color.rgb(14, 116, 144), 18)
+    }
+
+    private fun round(color: Int, radius: Int): GradientDrawable =
+        GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = radius.toFloat()
+        }
+
+    private fun receiveEcgDataItem(dataItem: DataItem) {
         io.execute {
-            val map = DataMapItem.fromDataItem(event.dataItem).dataMap
+            val map = DataMapItem.fromDataItem(dataItem).dataMap
             val metadata = HealthJson.ecgFromJson(map.getString("metadata") ?: return@execute)
             val asset = map.getAsset("samples") ?: return@execute
             val bytes = readAsset(asset) ?: return@execute
@@ -174,6 +247,16 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
                 status.text = "Received ECG ${metadata.sampleCount} samples."
                 refresh()
             }
+        }
+    }
+
+    private fun receiveWatchLog(event: DataEvent) {
+        val raw = DataMapItem.fromDataItem(event.dataItem).dataMap.getString("entry") ?: return
+        val entry = runCatching { HealthJson.watchLogFromJson(raw) }.getOrNull() ?: return
+        saveLog(entry)
+        runOnUiThread {
+            logs.text = readLogs()
+            status.text = "Watch log received: ${entry.message}"
         }
     }
 
@@ -300,4 +383,52 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
             GitHubReleaseUpdater.installDownloadedApk(this, file)
         }
     }
+
+    private fun refreshLinkStatus() {
+        Wearable.getNodeClient(this).connectedNodes
+            .addOnSuccessListener { nodes ->
+                linkStatus.text = if (nodes.isEmpty()) {
+                    "Watch link: offline. Data Layer queue will sync when connected."
+                } else {
+                    "Watch link: connected (${nodes.joinToString { it.displayName }})"
+                }
+            }
+            .addOnFailureListener { linkStatus.text = "Watch link check failed: ${it.message}" }
+    }
+
+    private fun loadExistingWearData() {
+        io.execute {
+            runCatching {
+                val buffer = Tasks.await(Wearable.getDataClient(this).dataItems)
+                try {
+                    buffer.forEach { item ->
+                        val path = item.uri.path.orEmpty()
+                        when {
+                            path.startsWith(WearPaths.DATA_ECG_SESSION_PREFIX) -> receiveEcgDataItem(item.freeze())
+                            path.startsWith(WearPaths.DATA_WATCH_LOG_PREFIX) -> {
+                                val raw = DataMapItem.fromDataItem(item).dataMap.getString("entry")
+                                val entry = raw?.let { json -> runCatching { HealthJson.watchLogFromJson(json) }.getOrNull() }
+                                if (entry != null) saveLog(entry)
+                            }
+                        }
+                    }
+                } finally {
+                    buffer.release()
+                }
+                runOnUiThread { logs.text = readLogs().ifBlank { "No watch logs yet." } }
+            }
+        }
+    }
+
+    private fun saveLog(entry: WatchLogEntry) {
+        val prefs = getSharedPreferences("watch_logs", MODE_PRIVATE)
+        val line = "${entry.id} ${java.util.Date(entry.timestampEpochMillis)} [${entry.level}] ${entry.source}: ${entry.message}"
+        val existing = prefs.getString("lines", "").orEmpty().lines().filter { it.isNotBlank() }
+        val next = (listOf(line) + existing.filterNot { it.contains(entry.id) }).take(80)
+        prefs.edit().putString("lines", next.joinToString("\n")).apply()
+    }
+
+    private fun readLogs(): String = getSharedPreferences("watch_logs", MODE_PRIVATE)
+        .getString("lines", "")
+        .orEmpty()
 }

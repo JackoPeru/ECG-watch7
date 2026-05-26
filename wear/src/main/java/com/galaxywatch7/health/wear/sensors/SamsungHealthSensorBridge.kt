@@ -14,6 +14,7 @@ import kotlin.math.roundToInt
 class SamsungHealthSensorBridge(private val context: Context) {
     interface Listener {
         fun onStatus(message: String)
+        fun onEcgProgress(secondsLeft: Int, sampleCount: Int, leadOffSamples: Int)
         fun onEcgComplete(metadata: EcgSessionMetadata, samples: FloatArray)
         fun onPpgMetrics(metrics: PpgMetrics)
     }
@@ -82,6 +83,7 @@ class SamsungHealthSensorBridge(private val context: Context) {
             val samples = ArrayList<Float>(16_000)
             val startedAt = System.currentTimeMillis()
             var leadOffSamples = 0
+            var lastProgressSecond = -1
             val proxy = Proxy.newProxyInstance(eventClass.classLoader, arrayOf(eventClass)) { _, method, args ->
                 when (method.name) {
                     "onDataReceived" -> {
@@ -96,6 +98,12 @@ class SamsungHealthSensorBridge(private val context: Context) {
                                     if (value != null) samples.add(value.toFloat())
                                 }
                             }
+                        }
+                        val elapsedSeconds = ((System.currentTimeMillis() - startedAt) / 1000L).toInt()
+                        val secondsLeft = (durationMillis / 1000L).toInt() - elapsedSeconds
+                        if (secondsLeft != lastProgressSecond) {
+                            lastProgressSecond = secondsLeft
+                            listener.onEcgProgress(secondsLeft.coerceAtLeast(0), samples.size, leadOffSamples)
                         }
                     }
                     "onError" -> listener.onStatus("ECG tracker error: ${args?.firstOrNull()}")
@@ -191,4 +199,3 @@ class SamsungHealthSensorBridge(private val context: Context) {
         return method?.invoke(point, key)
     }
 }
-

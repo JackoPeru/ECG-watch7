@@ -5,13 +5,21 @@ import com.galaxywatch7.health.shared.EcgBinaryCodec
 import com.galaxywatch7.health.shared.EcgSessionMetadata
 import com.galaxywatch7.health.shared.HealthJson
 import com.galaxywatch7.health.shared.PpgMetrics
+import com.galaxywatch7.health.shared.WatchLogEntry
 import com.galaxywatch7.health.shared.WearPaths
 import com.google.android.gms.wearable.Asset
 import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
 
 class WearSyncClient(private val context: Context) {
+    fun getConnectedNodeCount(onResult: (Int) -> Unit) {
+        Wearable.getNodeClient(context).connectedNodes
+            .addOnSuccessListener { onResult(it.size) }
+            .addOnFailureListener { onResult(0) }
+    }
+
     fun sendStatus(message: String) {
+        sendLog("INFO", "watch", message)
         Wearable.getNodeClient(context).connectedNodes.addOnSuccessListener { nodes ->
             nodes.forEach { node ->
                 Wearable.getMessageClient(context)
@@ -37,5 +45,12 @@ class WearSyncClient(private val context: Context) {
         request.dataMap.putLong("createdAt", System.currentTimeMillis())
         Wearable.getDataClient(context).putDataItem(request.asPutDataRequest().setUrgent())
     }
-}
 
+    fun sendLog(level: String, source: String, message: String) {
+        val entry = WatchLogEntry(level = level, source = source, message = message)
+        val request = PutDataMapRequest.create("${WearPaths.DATA_WATCH_LOG_PREFIX}/${entry.id}")
+        request.dataMap.putString("entry", HealthJson.watchLogToJson(entry))
+        request.dataMap.putLong("createdAt", entry.timestampEpochMillis)
+        Wearable.getDataClient(context).putDataItem(request.asPutDataRequest().setUrgent())
+    }
+}

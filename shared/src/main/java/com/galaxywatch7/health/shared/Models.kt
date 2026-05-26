@@ -22,7 +22,16 @@ object WearPaths {
     const val MESSAGE_COMMAND = "/command"
     const val MESSAGE_PPG_METRICS = "/ppg_metrics"
     const val DATA_ECG_SESSION_PREFIX = "/ecg_session"
+    const val DATA_WATCH_LOG_PREFIX = "/watch_log"
 }
+
+data class WatchLogEntry(
+    val id: String = UUID.randomUUID().toString(),
+    val timestampEpochMillis: Long = System.currentTimeMillis(),
+    val level: String,
+    val source: String,
+    val message: String
+)
 
 data class EcgSessionMetadata(
     val id: String = UUID.randomUUID().toString(),
@@ -101,6 +110,25 @@ object EcgBinaryCodec {
 }
 
 object HealthJson {
+    fun watchLogToJson(entry: WatchLogEntry): String = JSONObject()
+        .put("id", entry.id)
+        .put("timestampEpochMillis", entry.timestampEpochMillis)
+        .put("level", entry.level)
+        .put("source", entry.source)
+        .put("message", entry.message)
+        .toString()
+
+    fun watchLogFromJson(raw: String): WatchLogEntry {
+        val json = JSONObject(raw)
+        return WatchLogEntry(
+            id = json.getString("id"),
+            timestampEpochMillis = json.getLong("timestampEpochMillis"),
+            level = json.getString("level"),
+            source = json.getString("source"),
+            message = json.getString("message")
+        )
+    }
+
     fun ecgToJson(session: EcgSessionMetadata): String = JSONObject()
         .put("id", session.id)
         .put("startedAtEpochMillis", session.startedAtEpochMillis)
@@ -194,4 +222,3 @@ object CsvExport {
         return builder.toString()
     }
 }
-

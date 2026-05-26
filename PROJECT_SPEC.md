@@ -32,6 +32,7 @@ All BP and ECG screens must identify data as wellness/research information only.
 - Mobile asset names must include `mobile` and end in `.apk`.
 - Wear asset names must include `wear` and end in `.apk`.
 - Android requires same package id and same APK signing certificate for upgrades.
+- Wear Data Layer requires same package id and signing certificate across phone and watch apps; both APKs use `com.galaxywatch7.health.mobile` from v0.1.1.
 - Install is user-confirmed; no silent update in v1.
 
 ## Development Setup

@@ -58,5 +58,7 @@ Create a release from this machine:
 
 Android still requires user confirmation for APK install. APK signatures must match the currently installed app.
 
+Communication note: Wear Data Layer requires phone and watch APKs to share package id and signing certificate. From `v0.1.1`, both APKs use `com.galaxywatch7.health.mobile`. If you installed the old watch `v0.1.0`, uninstall `com.galaxywatch7.health.wear` once before installing the new watch APK.
+
 ## Safety
 This app is wellness/research only. It does not diagnose, treat, or replace clinical ECG/BP tools.
