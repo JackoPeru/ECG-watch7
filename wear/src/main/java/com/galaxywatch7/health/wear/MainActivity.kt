@@ -2,14 +2,17 @@ package com.galaxywatch7.health.wear
 
 import android.Manifest
 import android.app.Activity
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
@@ -47,6 +50,7 @@ class MainActivity : Activity(), SamsungHealthSensorBridge.Listener, DataClient.
     private var updateCheck: UpdateCheckResult? = null
     private var updateApk: File? = null
     private var lastSyncCount = 0
+    private val processedUpdateItems = mutableSetOf<String>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -82,7 +86,7 @@ class MainActivity : Activity(), SamsungHealthSensorBridge.Listener, DataClient.
             if (event.type == DataEvent.TYPE_CHANGED &&
                 event.dataItem.uri.path.orEmpty().startsWith(com.galaxywatch7.health.shared.WearPaths.DATA_WEAR_UPDATE_PREFIX)
             ) {
-                receiveWearUpdateDataItem(event.dataItem)
+                receiveWearUpdateDataItem(event.dataItem.freeze())
             }
         }
     }
@@ -170,8 +174,17 @@ class MainActivity : Activity(), SamsungHealthSensorBridge.Listener, DataClient.
         })
         root.addView(actionButton("Permissions").apply {
             setOnClickListener {
-                requestSensorPermission()
-                logPermissionStatus()
+                if (checkSelfPermission(Manifest.permission.BODY_SENSORS) == PackageManager.PERMISSION_GRANTED) {
+                    requestSensorPermission()
+                    logPermissionStatus()
+                } else {
+                    requestSensorPermission()
+                    main.postDelayed({
+                        if (checkSelfPermission(Manifest.permission.BODY_SENSORS) != PackageManager.PERMISSION_GRANTED) {
+                            openAppPermissionSettings()
+                        }
+                    }, 1200)
+                }
             }
         })
         logPreview = TextView(this).apply {
@@ -269,6 +282,13 @@ class MainActivity : Activity(), SamsungHealthSensorBridge.Listener, DataClient.
         if (missing.isNotEmpty()) {
             onStatus("ECG needs permissions first: ${missing.joinToString()}")
             requestPermissions(missing.toTypedArray(), 10)
+            if (missing.contains(Manifest.permission.BODY_SENSORS)) {
+                main.postDelayed({
+                    if (checkSelfPermission(Manifest.permission.BODY_SENSORS) != PackageManager.PERMISSION_GRANTED) {
+                        openAppPermissionSettings()
+                    }
+                }, 1200)
+            }
             return false
         }
         logPermissionStatus()
@@ -299,6 +319,19 @@ class MainActivity : Activity(), SamsungHealthSensorBridge.Listener, DataClient.
             "${permission.substringAfterLast('.')}=$state"
         }
         onStatus("Permission status: $summary")
+    }
+
+    private fun openAppPermissionSettings() {
+        runCatching {
+            val intent = Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:$packageName")
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+            onStatus("BODY_SENSORS still denied. Opened app settings: Permissions > Sensors/Body sensors > Allow.")
+        }.onFailure {
+            onStatus("Open permission settings failed: ${it.message ?: it.javaClass.simpleName}")
+        }
     }
 
     private fun checkForUpdate() {
@@ -339,6 +372,8 @@ class MainActivity : Activity(), SamsungHealthSensorBridge.Listener, DataClient.
     }
 
     private fun receiveWearUpdateDataItem(dataItem: com.google.android.gms.wearable.DataItem) {
+        val uri = dataItem.uri
+        if (!processedUpdateItems.add(uri.toString())) return
         io.execute {
             runCatching {
                 val map = DataMapItem.fromDataItem(dataItem).dataMap
@@ -352,7 +387,9 @@ class MainActivity : Activity(), SamsungHealthSensorBridge.Listener, DataClient.
                 updateApk = file
                 runOnUiThread { status.text = "Watch update received via phone: ${file.name}. Press Install." }
                 sync.sendLog("INFO", "update", "Watch APK received via phone: ${file.name}, ${file.length()} bytes.")
+                Tasks.await(Wearable.getDataClient(this).deleteDataItems(uri))
             }.onFailure {
+                processedUpdateItems.remove(uri.toString())
                 onStatus("Watch update receive failed: ${it.message ?: it.javaClass.simpleName}")
             }
         }

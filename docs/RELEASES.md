@@ -65,6 +65,8 @@ Da `v0.2.2`, il fallback ECG pubblico prova piu' sampling period con handler esp
 
 Da `v0.2.3`, il watch logga tutti i permessi sensore rilevanti, richiede quelli runtime prima di avviare ECG e dichiara `HIGH_SAMPLING_RATE_SENSORS`. Il bottone `Permissions` forza richiesta/log permessi.
 
+Da `v0.2.4`, se `BODY_SENSORS` resta negato dopo la richiesta runtime, il watch apre direttamente le impostazioni app per abilitarlo manualmente. Gli update APK ricevuti via telefono vengono eliminati dal Data Layer dopo il salvataggio locale per evitare ricezioni duplicate e `Buffer is closed`.
+
 ## Migrazione v0.1.1
 Wear Data Layer richiede stesso package name e stessa firma tra telefono e orologio. Da `v0.1.1`, anche l'APK watch usa:
 
