@@ -70,5 +70,7 @@ Check SDK locally:
 
 Raw ECG analysis is implemented locally in `shared` and displayed on the phone after a watch session arrives. See [docs/ECG_RAW_ANALYSIS.md](docs/ECG_RAW_ANALYSIS.md).
 
+If the watch logs `SDK_POLICY_ERROR`, enable **Health Platform** developer mode on the watch: `Settings > Apps > Health Platform`, then tap the `Health Platform` title about 10 times until `[Dev mode]` appears. This is different from Android Developer options.
+
 ## Safety
 This app is wellness/research only. It does not diagnose, treat, or replace clinical ECG/BP tools.

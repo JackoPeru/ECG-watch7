@@ -42,6 +42,17 @@ Android chiedera' conferma installazione e, al primo uso, permesso per installar
 ## Watch
 Il watch ha lo stesso flusso. Wear OS puo' comunque mostrare schermate di permesso/installer diverse dal telefono; se il sistema blocca install da sorgenti sconosciute sul watch, serve una prima abilitazione manuale.
 
+## Health Platform Developer Mode
+Se sul watch compare `SDK_POLICY_ERROR`, non basta Android `Developer options`. Serve la developer mode di **Health Platform** sul watch:
+
+1. Watch: apri `Settings`.
+2. Vai su `Apps`.
+3. Scorri e apri `Health Platform`.
+4. Tocca rapidamente circa 10 volte la parte del titolo `Health Platform`.
+5. Deve apparire `[Dev mode]` accanto/al posto del titolo.
+
+Questa modalita' e' solo per test/debug. Per distribuzione reale Samsung richiede partner approval con package name e firma registrati.
+
 ## Migrazione v0.1.1
 Wear Data Layer richiede stesso package name e stessa firma tra telefono e orologio. Da `v0.1.1`, anche l'APK watch usa:
 

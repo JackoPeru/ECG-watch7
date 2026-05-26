@@ -183,6 +183,7 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
             setOnClickListener {
                 getSharedPreferences("watch_logs", MODE_PRIVATE).edit().clear().apply()
                 logs.text = "No watch logs yet."
+                clearWatchLogDataItems()
             }
         })
         root.addView(sectionTitle("Updates"))
@@ -466,4 +467,29 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
     private fun readLogs(): String = getSharedPreferences("watch_logs", MODE_PRIVATE)
         .getString("lines", "")
         .orEmpty()
+
+    private fun clearWatchLogDataItems() {
+        io.execute {
+            runCatching {
+                val buffer = Tasks.await(Wearable.getDataClient(this).dataItems)
+                try {
+                    buffer.forEach { item ->
+                        if (item.uri.path.orEmpty().startsWith(WearPaths.DATA_WATCH_LOG_PREFIX)) {
+                            Tasks.await(Wearable.getDataClient(this).deleteDataItems(item.uri))
+                        }
+                    }
+                } finally {
+                    buffer.release()
+                }
+                runOnUiThread {
+                    logs.text = "No watch logs yet."
+                    status.text = "Watch logs cleared from phone and Wear Data Layer."
+                }
+            }.onFailure {
+                runOnUiThread {
+                    status.text = "Clear logs failed: ${it.message ?: it.javaClass.simpleName}"
+                }
+            }
+        }
+    }
 }
