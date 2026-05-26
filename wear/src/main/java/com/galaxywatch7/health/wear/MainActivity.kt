@@ -129,6 +129,9 @@ class MainActivity : Activity(), SamsungHealthSensorBridge.Listener {
                 onStatus("Manual sync requested.")
             }
         })
+        root.addView(actionButton("Health Platform").apply {
+            setOnClickListener { bridge.openHealthPlatformSettings(this@MainActivity) }
+        })
         logPreview = TextView(this).apply {
             text = "Logs will appear here."
             textSize = 10f

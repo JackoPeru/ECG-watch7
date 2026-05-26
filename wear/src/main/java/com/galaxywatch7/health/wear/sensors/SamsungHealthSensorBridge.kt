@@ -1,9 +1,13 @@
 package com.galaxywatch7.health.wear.sensors
 
+import android.app.Activity
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import com.galaxywatch7.health.shared.EcgSessionMetadata
 import com.galaxywatch7.health.shared.PpgMetrics
 import java.lang.reflect.Proxy
@@ -47,7 +51,7 @@ class SamsungHealthSensorBridge(private val context: Context) {
                         listener.onStatus("Watch sensor service ready. Trackers: ${supportedTrackerNames().joinToString()}")
                     }
                     "onConnectionFailed" -> {
-                        listener.onStatus("Watch sensor service failed: ${args?.firstOrNull()}")
+                        handleConnectionFailure(args?.firstOrNull(), listener)
                     }
                     "onConnectionEnded" -> listener.onStatus("Watch sensor service ended.")
                 }
@@ -58,6 +62,19 @@ class SamsungHealthSensorBridge(private val context: Context) {
             listener.onStatus("Connecting watch sensor service...")
         }.onFailure {
             listener.onStatus("SDK connect error: ${it.message}")
+        }
+    }
+
+    fun openHealthPlatformSettings(listener: Listener) {
+        runCatching {
+            val intent = Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:com.samsung.android.service.health")
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            listener.onStatus("Opened Health Platform app settings. If visible, use Settings > Apps > Health Platform and tap title 10 times for [Dev mode].")
+        }.onFailure {
+            listener.onStatus("Cannot open Health Platform settings: ${it.message}")
         }
     }
 
@@ -188,6 +205,28 @@ class SamsungHealthSensorBridge(private val context: Context) {
         val trackers = capability.javaClass.getMethod("getSupportHealthTrackerTypes").invoke(capability) as? List<*>
         trackers.orEmpty().map { it.toString() }
     }.getOrDefault(emptyList())
+
+    private fun handleConnectionFailure(error: Any?, listener: Listener) {
+        val message = error?.toString().orEmpty()
+        val code = runCatching { error?.javaClass?.getMethod("getErrorCode")?.invoke(error) as? Int }.getOrNull()
+        val hasResolution = runCatching { error?.javaClass?.getMethod("hasResolution")?.invoke(error) as? Boolean }.getOrDefault(false)
+        if (hasResolution == true && context is Activity) {
+            runCatching {
+                error?.javaClass?.getMethod("resolve", Activity::class.java)?.invoke(error, context)
+                listener.onStatus("Watch sensor service needs install/update. Opened Samsung resolution screen.")
+                return
+            }.onFailure {
+                listener.onStatus("Sensor service resolution failed: ${it.message}")
+            }
+        }
+
+        val policyHint = if (message.contains("POLICY", ignoreCase = true) || message.contains("SDK_POLICY", ignoreCase = true) || code == -1) {
+            " SDK policy blocked app. Android Developer options is not enough: enable Health Platform Dev mode: Watch Settings > Apps > Health Platform > tap title about 10 times until [Dev mode]."
+        } else {
+            ""
+        }
+        listener.onStatus("Watch sensor service failed: ${message.ifBlank { "error code $code" }}.$policyHint")
+    }
 
     private fun enumValue(className: String, name: String): Any {
         val clazz = Class.forName(className)
