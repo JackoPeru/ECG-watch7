@@ -38,6 +38,7 @@ import com.google.android.gms.wearable.DataItem
 import com.google.android.gms.wearable.DataMapItem
 import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.MessageEvent
+import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
 import java.io.File
 import java.util.concurrent.Executors
@@ -57,6 +58,8 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
     private var selectedSamples: FloatArray = FloatArray(0)
     private var updateCheck: UpdateCheckResult? = null
     private var updateApk: File? = null
+    private var wearUpdateCheck: UpdateCheckResult? = null
+    private var wearUpdateApk: File? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -81,15 +84,19 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
 
     override fun onDataChanged(events: DataEventBuffer) {
         events.forEach { event ->
-            if (event.type == DataEvent.TYPE_CHANGED &&
-                event.dataItem.uri.path?.startsWith(WearPaths.DATA_ECG_SESSION_PREFIX) == true
-            ) {
-                receiveEcgDataItem(event.dataItem)
-            }
-            if (event.type == DataEvent.TYPE_CHANGED &&
-                event.dataItem.uri.path?.startsWith(WearPaths.DATA_WATCH_LOG_PREFIX) == true
-            ) {
-                receiveWatchLog(event)
+            runCatching {
+                if (event.type == DataEvent.TYPE_CHANGED &&
+                    event.dataItem.uri.path?.startsWith(WearPaths.DATA_ECG_SESSION_PREFIX) == true
+                ) {
+                    receiveEcgDataItem(event.dataItem)
+                }
+                if (event.type == DataEvent.TYPE_CHANGED &&
+                    event.dataItem.uri.path?.startsWith(WearPaths.DATA_WATCH_LOG_PREFIX) == true
+                ) {
+                    receiveWatchLog(event)
+                }
+            }.onFailure {
+                runOnUiThread { status.text = "Data Layer event ignored: ${it.message ?: it.javaClass.simpleName}" }
             }
         }
     }
@@ -198,6 +205,12 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
         root.addView(primaryButton("Install update").apply {
             setOnClickListener { installUpdate() }
         })
+        root.addView(primaryButton("Download watch update").apply {
+            setOnClickListener { downloadWearUpdateOnPhone() }
+        })
+        root.addView(primaryButton("Send watch update").apply {
+            setOnClickListener { sendWearUpdateToWatch() }
+        })
 
         return ScrollView(this).apply { addView(root) }
     }
@@ -257,30 +270,38 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
 
     private fun receiveEcgDataItem(dataItem: DataItem) {
         io.execute {
-            val map = DataMapItem.fromDataItem(dataItem).dataMap
-            val metadata = HealthJson.ecgFromJson(map.getString("metadata") ?: return@execute)
-            val asset = map.getAsset("samples") ?: return@execute
-            val bytes = readAsset(asset) ?: return@execute
-            val samples = EcgBinaryCodec.decode(bytes)
-            store.saveEcgSession(metadata, samples)
-            selectedSession = metadata
-            selectedSamples = samples
-            val analysis = EcgAnalyzer.analyze(samples, metadata.sampleRateHz, metadata.startedAtEpochMillis)
-            runOnUiThread {
-                status.text = "Received ECG ${metadata.sampleCount} samples."
-                ecgAnalysis.text = analysisText(analysis)
-                refresh()
+            runCatching {
+                val map = DataMapItem.fromDataItem(dataItem).dataMap
+                val metadata = HealthJson.ecgFromJson(map.getString("metadata") ?: return@execute)
+                val asset = map.getAsset("samples") ?: return@execute
+                val bytes = readAsset(asset) ?: return@execute
+                val samples = EcgBinaryCodec.decode(bytes)
+                store.saveEcgSession(metadata, samples)
+                selectedSession = metadata
+                selectedSamples = samples
+                val analysis = EcgAnalyzer.analyze(samples, metadata.sampleRateHz, metadata.startedAtEpochMillis)
+                runOnUiThread {
+                    status.text = "Received ECG ${metadata.sampleCount} samples."
+                    ecgAnalysis.text = analysisText(analysis)
+                    refresh()
+                }
+            }.onFailure {
+                runOnUiThread { status.text = "ECG receive failed: ${it.message ?: it.javaClass.simpleName}" }
             }
         }
     }
 
     private fun receiveWatchLog(event: DataEvent) {
-        val raw = DataMapItem.fromDataItem(event.dataItem).dataMap.getString("entry") ?: return
-        val entry = runCatching { HealthJson.watchLogFromJson(raw) }.getOrNull() ?: return
-        saveLog(entry)
-        runOnUiThread {
-            logs.text = readLogs()
-            status.text = "Watch log received: ${entry.message}"
+        runCatching {
+            val raw = DataMapItem.fromDataItem(event.dataItem).dataMap.getString("entry") ?: return
+            val entry = runCatching { HealthJson.watchLogFromJson(raw) }.getOrNull() ?: return
+            saveLog(entry)
+            runOnUiThread {
+                logs.text = readLogs()
+                status.text = "Watch log received: ${entry.message}"
+            }
+        }.onFailure {
+            runOnUiThread { status.text = "Watch log receive failed: ${it.message ?: it.javaClass.simpleName}" }
         }
     }
 
@@ -416,6 +437,57 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
             "APK update non trovato. Scaricalo prima."
         } else {
             GitHubReleaseUpdater.installDownloadedApk(this, file)
+        }
+    }
+
+    private fun downloadWearUpdateOnPhone() {
+        updateStatus.text = "Checking wear release..."
+        io.execute {
+            val result = GitHubReleaseUpdater.check(BuildConfig.VERSION_NAME, "wear")
+            wearUpdateCheck = result
+            val assetUrl = result.assetUrl
+            val version = result.latestVersion
+            if (assetUrl == null || version == null) {
+                runOnUiThread { updateStatus.text = result.message + "\nNessun APK watch da scaricare." }
+                return@execute
+            }
+            runOnUiThread { updateStatus.text = "Telefono scarica APK watch $version..." }
+            val file = GitHubReleaseUpdater.downloadApk(this, assetUrl, version, "wear") { progress ->
+                runOnUiThread {
+                    updateStatus.text = "Watch APK via phone\n${progress.message}\n${progress.sizeLabel}"
+                }
+            }
+            wearUpdateApk = file
+            runOnUiThread {
+                updateStatus.text = if (file == null) {
+                    "Download APK watch fallito."
+                } else {
+                    "APK watch scaricato sul telefono: ${file.name}. Premi Send watch update."
+                }
+            }
+        }
+    }
+
+    private fun sendWearUpdateToWatch() {
+        val version = wearUpdateCheck?.latestVersion
+        val file = wearUpdateApk ?: version?.let { GitHubReleaseUpdater.findDownloadedApk(this, it, "wear") }
+        if (version == null || file == null || !file.exists()) {
+            updateStatus.text = "APK watch non trovato. Premi prima Download watch update."
+            return
+        }
+        updateStatus.text = "Invio APK watch via Data Layer..."
+        io.execute {
+            runCatching {
+                val request = PutDataMapRequest.create("${WearPaths.DATA_WEAR_UPDATE_PREFIX}/$version/${System.currentTimeMillis()}")
+                request.dataMap.putString("version", version)
+                request.dataMap.putString("fileName", file.name)
+                request.dataMap.putLong("size", file.length())
+                request.dataMap.putAsset("apk", Asset.createFromBytes(file.readBytes()))
+                Tasks.await(Wearable.getDataClient(this).putDataItem(request.asPutDataRequest().setUrgent()))
+                runOnUiThread { updateStatus.text = "APK watch inviato. Sul watch premi Install quando compare ricevuto." }
+            }.onFailure {
+                runOnUiThread { updateStatus.text = "Invio APK watch fallito: ${it.message ?: it.javaClass.simpleName}" }
+            }
         }
     }
 

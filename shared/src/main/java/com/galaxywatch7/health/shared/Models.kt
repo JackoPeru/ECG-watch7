@@ -23,6 +23,7 @@ object WearPaths {
     const val MESSAGE_PPG_METRICS = "/ppg_metrics"
     const val DATA_ECG_SESSION_PREFIX = "/ecg_session"
     const val DATA_WATCH_LOG_PREFIX = "/watch_log"
+    const val DATA_WEAR_UPDATE_PREFIX = "/wear_update"
 }
 
 data class WatchLogEntry(

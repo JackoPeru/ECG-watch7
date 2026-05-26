@@ -59,6 +59,8 @@ Da `v0.1.9`, il watch ha il bottone `Policy info`: manda al telefono package nam
 
 Da `v0.2.0`, il watch usa il sensore Android vendor pubblico rilevato nei log (`AFE4510 ECG`, type `69669`, stringType `com.samsung.sensor.ecg`) prima del Samsung Health Sensor SDK. Il fallback registra il sensore con `SensorManager`, salva `SensorEvent.values[0]`, logga il primo frame dati e stima il sample rate dalla durata reale.
 
+Da `v0.2.1`, il telefono puo' scaricare anche l'APK watch e inviarlo all'orologio via Wear Data Layer (`Download watch update` -> `Send watch update`). Il watch salva l'APK ricevuto e usa il normale bottone `Install`. Questo evita il download GitHub diretto dal watch, spesso lento.
+
 ## Migrazione v0.1.1
 Wear Data Layer richiede stesso package name e stessa firma tra telefono e orologio. Da `v0.1.1`, anche l'APK watch usa:
 

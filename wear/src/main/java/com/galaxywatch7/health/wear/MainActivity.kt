@@ -23,10 +23,17 @@ import com.galaxywatch7.health.shared.updates.UpdateCheckResult
 import com.galaxywatch7.health.wear.sensors.SamsungHealthSensorBridge
 import com.galaxywatch7.health.wear.storage.WearSessionStore
 import com.galaxywatch7.health.wear.sync.WearSyncClient
+import com.google.android.gms.tasks.Tasks
+import com.google.android.gms.wearable.Asset
+import com.google.android.gms.wearable.DataClient
+import com.google.android.gms.wearable.DataEvent
+import com.google.android.gms.wearable.DataEventBuffer
+import com.google.android.gms.wearable.DataMapItem
+import com.google.android.gms.wearable.Wearable
 import java.io.File
 import java.util.concurrent.Executors
 
-class MainActivity : Activity(), SamsungHealthSensorBridge.Listener {
+class MainActivity : Activity(), SamsungHealthSensorBridge.Listener, DataClient.OnDataChangedListener {
     private lateinit var status: TextView
     private lateinit var nodeStatus: TextView
     private lateinit var sampleStatus: TextView
@@ -54,9 +61,30 @@ class MainActivity : Activity(), SamsungHealthSensorBridge.Listener {
         refreshConnectionStatus()
     }
 
+    override fun onResume() {
+        super.onResume()
+        Wearable.getDataClient(this).addListener(this)
+        loadPendingWearUpdates()
+    }
+
+    override fun onPause() {
+        Wearable.getDataClient(this).removeListener(this)
+        super.onPause()
+    }
+
     override fun onDestroy() {
         bridge.disconnect()
         super.onDestroy()
+    }
+
+    override fun onDataChanged(events: DataEventBuffer) {
+        events.forEach { event ->
+            if (event.type == DataEvent.TYPE_CHANGED &&
+                event.dataItem.uri.path.orEmpty().startsWith(com.galaxywatch7.health.shared.WearPaths.DATA_WEAR_UPDATE_PREFIX)
+            ) {
+                receiveWearUpdateDataItem(event.dataItem)
+            }
+        }
     }
 
     override fun onStatus(message: String) {
@@ -257,6 +285,48 @@ class MainActivity : Activity(), SamsungHealthSensorBridge.Listener {
         val file = updateApk ?: updateCheck?.latestVersion?.let { GitHubReleaseUpdater.findDownloadedApk(this, it, "wear") }
         onStatus(if (file == null) "APK not found. Download first." else GitHubReleaseUpdater.installDownloadedApk(this, file))
     }
+
+    private fun receiveWearUpdateDataItem(dataItem: com.google.android.gms.wearable.DataItem) {
+        io.execute {
+            runCatching {
+                val map = DataMapItem.fromDataItem(dataItem).dataMap
+                val version = map.getString("version") ?: "unknown"
+                val fileName = map.getString("fileName") ?: "Watch7Health-wear-$version.apk"
+                val asset = map.getAsset("apk") ?: return@execute
+                val bytes = readAsset(asset) ?: return@execute
+                val dir = File(getExternalFilesDir(null) ?: cacheDir, "updates").apply { mkdirs() }
+                val file = File(dir, fileName.replace(Regex("[^A-Za-z0-9._-]"), "_"))
+                file.writeBytes(bytes)
+                updateApk = file
+                runOnUiThread { status.text = "Watch update received via phone: ${file.name}. Press Install." }
+                sync.sendLog("INFO", "update", "Watch APK received via phone: ${file.name}, ${file.length()} bytes.")
+            }.onFailure {
+                onStatus("Watch update receive failed: ${it.message ?: it.javaClass.simpleName}")
+            }
+        }
+    }
+
+    private fun loadPendingWearUpdates() {
+        io.execute {
+            runCatching {
+                val buffer = Tasks.await(Wearable.getDataClient(this).dataItems)
+                try {
+                    buffer.forEach { item ->
+                        if (item.uri.path.orEmpty().startsWith(com.galaxywatch7.health.shared.WearPaths.DATA_WEAR_UPDATE_PREFIX)) {
+                            receiveWearUpdateDataItem(item.freeze())
+                        }
+                    }
+                } finally {
+                    buffer.release()
+                }
+            }
+        }
+    }
+
+    private fun readAsset(asset: Asset): ByteArray? = runCatching {
+        val response = Tasks.await(Wearable.getDataClient(this).getFdForAsset(asset))
+        response.inputStream.use { it.readBytes() }
+    }.getOrNull()
 
     private fun syncQueuedSessions() {
         io.execute {

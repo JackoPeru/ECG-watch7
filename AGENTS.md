@@ -28,6 +28,7 @@ Build a personal Android + Wear OS system for Galaxy Watch7 that records ECG raw
 - The app must not claim ECG recording started until raw samples arrive. If Samsung policy blocks ECG, no zero-sample session is saved. BP research can fall back to Android's public `TYPE_HEART_RATE` sensor when Samsung HR tracker is blocked, but there is no public Android ECG/raw PPG fallback.
 - v0.1.9 adds watch-side policy diagnostics: app package/signing SHA-256, Health Platform package version, supported Samsung trackers, and public Android sensor scan. These logs are intended to confirm whether Samsung approval/dev mode is the remaining blocker.
 - v0.2.0 uses the public Android vendor sensor exposed on the user's Watch7: `AFE4510 ECG`, type `69669`, stringType `com.samsung.sensor.ecg`. ECG capture now tries this SensorManager fallback before Samsung Health Sensor SDK, stores `values[0]`, and estimates sample rate from captured count/duration.
+- v0.2.1 improves update flow: phone can download the wear APK from GitHub and send it to the watch via Wear Data Layer as an asset, avoiding slow direct GitHub download on the watch. Mobile Data Layer handlers now guard malformed events to reduce crashes when the watch app restarts after update.
 
 ## SDK Note
 Place Samsung's official `samsung-health-sensor-api.aar` at:
