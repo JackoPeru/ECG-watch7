@@ -200,7 +200,8 @@ class SamsungHealthSensorBridge(private val context: Context) {
 
     private fun startPublicEcgFallback(listener: Listener, durationMillis: Long): Boolean {
         val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
-        val ecgSensor = findPublicEcgSensor(sensorManager) ?: return false
+        val ecgSensors = findPublicEcgSensors(sensorManager)
+        if (sensorManager == null || ecgSensors.isEmpty()) return false
         val samples = CopyOnWriteArrayList<Float>()
         val startedAt = System.currentTimeMillis()
         var firstValuesLogged = false
@@ -228,14 +229,38 @@ class SamsungHealthSensorBridge(private val context: Context) {
         }
 
         publicEcgListener = fallbackListener
-        val registered = sensorManager?.registerListener(
-            fallbackListener,
-            ecgSensor,
-            SensorManager.SENSOR_DELAY_FASTEST
-        ) ?: false
-        if (!registered) {
+
+        var registeredSensor: Sensor? = null
+        val attempts = mutableListOf<String>()
+        for (sensor in ecgSensors) {
+            listener.onStatus("Public ECG candidate: ${sensorDebugLine(sensor)}")
+            val required = sensorRequiredPermission(sensor)
+            if (required.isNotBlank()) {
+                val granted = context.checkSelfPermission(required) == PackageManager.PERMISSION_GRANTED
+                listener.onStatus("Public ECG required permission: $required granted=$granted.")
+            }
+            val periods = samplingPeriods(sensor)
+            for (period in periods) {
+                val registered = runCatching {
+                    sensorManager.registerListener(fallbackListener, sensor, period, 0, main)
+                }.getOrElse {
+                    attempts.add("${sensor.name}@$period:${it.javaClass.simpleName}")
+                    false
+                }
+                if (registered) {
+                    registeredSensor = sensor
+                    listener.onStatus("Public ECG listener accepted: ${sensor.name}, period=${period}us.")
+                    break
+                }
+                attempts.add("${sensor.name}@$period:false")
+            }
+            if (registeredSensor != null) break
+        }
+
+        val ecgSensor = registeredSensor
+        if (ecgSensor == null) {
             publicEcgListener = null
-            listener.onStatus("Public ECG fallback found but listener rejected: ${ecgSensor.name}. Trying Samsung SDK.")
+            listener.onStatus("Public ECG fallback rejected by SensorManager. Attempts: ${attempts.take(6).joinToString()}. Trying Samsung SDK.")
             return false
         }
 
@@ -447,7 +472,7 @@ class SamsungHealthSensorBridge(private val context: Context) {
         }
         interesting.take(8).forEach { sensor ->
             listener.onStatus(
-                "Public sensor: name=${sensor.name}; type=${sensor.type}; string=${sensor.stringType}; vendor=${sensor.vendor}"
+                "Public sensor: ${sensorDebugLine(sensor)}"
             )
         }
         if (interesting.size > 8) {
@@ -487,13 +512,38 @@ class SamsungHealthSensorBridge(private val context: Context) {
         return method?.invoke(point, key)
     }
 
-    private fun findPublicEcgSensor(sensorManager: SensorManager?): Sensor? {
-        if (sensorManager == null) return null
-        return sensorManager.getSensorList(Sensor.TYPE_ALL).firstOrNull {
+    private fun findPublicEcgSensors(sensorManager: SensorManager?): List<Sensor> {
+        if (sensorManager == null) return emptyList()
+        return sensorManager.getSensorList(Sensor.TYPE_ALL).filter {
             it.stringType.equals("com.samsung.sensor.ecg", ignoreCase = true) ||
                 it.name.contains("ECG", ignoreCase = true)
         }
     }
+
+    private fun samplingPeriods(sensor: Sensor): List<Int> {
+        val values = mutableListOf<Int>()
+        if (sensor.minDelay > 0) values.add(sensor.minDelay)
+        values.addAll(
+            listOf(
+                500_000,
+                SensorManager.SENSOR_DELAY_NORMAL,
+                SensorManager.SENSOR_DELAY_UI,
+                SensorManager.SENSOR_DELAY_GAME,
+                SensorManager.SENSOR_DELAY_FASTEST
+            )
+        )
+        return values.distinct().filter { it >= 0 }
+    }
+
+    private fun sensorDebugLine(sensor: Sensor): String =
+        "name=${sensor.name}; type=${sensor.type}; string=${sensor.stringType}; vendor=${sensor.vendor}; " +
+            "perm=${sensorRequiredPermission(sensor).ifBlank { "none" }}; minDelay=${sensor.minDelay}; maxDelay=${sensor.maxDelay}; " +
+            "reporting=${sensor.reportingMode}; wake=${sensor.isWakeUpSensor}"
+
+    private fun sensorRequiredPermission(sensor: Sensor): String =
+        runCatching {
+            sensor.javaClass.getMethod("getRequiredPermission").invoke(sensor) as? String
+        }.getOrNull().orEmpty()
 
     private companion object {
         const val HEALTH_PLATFORM_PACKAGE = "com.samsung.android.service.health"

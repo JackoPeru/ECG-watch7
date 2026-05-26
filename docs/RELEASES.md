@@ -61,6 +61,8 @@ Da `v0.2.0`, il watch usa il sensore Android vendor pubblico rilevato nei log (`
 
 Da `v0.2.1`, il telefono puo' scaricare anche l'APK watch e inviarlo all'orologio via Wear Data Layer (`Download watch update` -> `Send watch update`). Il watch salva l'APK ricevuto e usa il normale bottone `Install`. Questo evita il download GitHub diretto dal watch, spesso lento.
 
+Da `v0.2.2`, il fallback ECG pubblico prova piu' sampling period con handler esplicito e logga permesso richiesto, min/max delay, reporting mode e wake status del sensore. Serve per distinguere listener rifiutato per permesso/signature da listener rifiutato per configurazione sampling.
+
 ## Migrazione v0.1.1
 Wear Data Layer richiede stesso package name e stessa firma tra telefono e orologio. Da `v0.1.1`, anche l'APK watch usa:
 
