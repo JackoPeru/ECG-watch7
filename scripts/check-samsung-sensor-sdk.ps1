@@ -3,7 +3,28 @@ $ErrorActionPreference = "Stop"
 $target = "wear\libs\samsung-health-sensor-api.aar"
 if (Test-Path $target) {
     $file = Get-Item $target
-    Write-Host "OK: $target exists ($($file.Length) bytes)."
+    if ($file.PSIsContainer) {
+        Write-Host "Invalid: $target is a directory, expected AAR file."
+        exit 1
+    }
+    if ($file.Length -lt 10000) {
+        Write-Host "Invalid: $target is too small ($($file.Length) bytes), expected Samsung AAR."
+        exit 1
+    }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    try {
+        $zip = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $target))
+        $hasClasses = $zip.Entries | Where-Object { $_.FullName -eq "classes.jar" } | Select-Object -First 1
+        $zip.Dispose()
+        if (-not $hasClasses) {
+            Write-Host "Invalid: $target does not contain classes.jar."
+            exit 1
+        }
+    } catch {
+        Write-Host "Invalid: $target is not a readable AAR/ZIP: $($_.Exception.Message)"
+        exit 1
+    }
+    Write-Host "OK: $target exists ($($file.Length) bytes) and contains classes.jar."
     exit 0
 }
 
