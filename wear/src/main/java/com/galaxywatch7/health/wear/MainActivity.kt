@@ -145,7 +145,9 @@ class MainActivity : Activity(), SamsungHealthSensorBridge.Listener, DataClient.
         sampleStatus = pill("No active recording", Color.rgb(8, 47, 73), 12f)
         root.addView(sampleStatus)
         root.addView(actionButton("ECG 30s").apply {
-            setOnClickListener { bridge.startEcg(this@MainActivity) }
+            setOnClickListener {
+                if (ensureSensorPermissions()) bridge.startEcg(this@MainActivity)
+            }
         })
         root.addView(actionButton("BP research").apply {
             setOnClickListener { bridge.startBpResearchCapture(this@MainActivity) }
@@ -161,7 +163,16 @@ class MainActivity : Activity(), SamsungHealthSensorBridge.Listener, DataClient.
             setOnClickListener { bridge.openHealthPlatformSettings(this@MainActivity) }
         })
         root.addView(actionButton("Policy info").apply {
-            setOnClickListener { bridge.sendPolicyDiagnostic(this@MainActivity) }
+            setOnClickListener {
+                logPermissionStatus()
+                bridge.sendPolicyDiagnostic(this@MainActivity)
+            }
+        })
+        root.addView(actionButton("Permissions").apply {
+            setOnClickListener {
+                requestSensorPermission()
+                logPermissionStatus()
+            }
         })
         logPreview = TextView(this).apply {
             text = "Logs will appear here."
@@ -235,18 +246,59 @@ class MainActivity : Activity(), SamsungHealthSensorBridge.Listener, DataClient.
         }
 
     private fun requestSensorPermission() {
+        val requested = dangerousSensorPermissions()
+        val missing = requested
+            .filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+            .toTypedArray()
+        if (missing.isNotEmpty()) {
+            onStatus("Requesting sensor permissions: ${missing.joinToString()}")
+            requestPermissions(missing, 10)
+        } else {
+            logPermissionStatus()
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 10) logPermissionStatus()
+    }
+
+    private fun ensureSensorPermissions(): Boolean {
+        val missing = dangerousSensorPermissions()
+            .filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+        if (missing.isNotEmpty()) {
+            onStatus("ECG needs permissions first: ${missing.joinToString()}")
+            requestPermissions(missing.toTypedArray(), 10)
+            return false
+        }
+        logPermissionStatus()
+        return true
+    }
+
+    private fun dangerousSensorPermissions(): List<String> {
         val requested = mutableListOf(
             Manifest.permission.BODY_SENSORS,
-            Manifest.permission.ACTIVITY_RECOGNITION,
-            "com.samsung.android.hardware.sensormanager.permission.READ_ADDITIONAL_HEALTH_DATA"
+            Manifest.permission.ACTIVITY_RECOGNITION
         )
         if (Build.VERSION.SDK_INT >= 36) {
             requested.add("android.permission.health.READ_HEART_RATE")
         }
-        val missing = requested
-            .filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
-            .toTypedArray()
-        if (missing.isNotEmpty()) requestPermissions(missing, 10)
+        return requested
+    }
+
+    private fun logPermissionStatus() {
+        val names = listOf(
+            Manifest.permission.BODY_SENSORS,
+            Manifest.permission.ACTIVITY_RECOGNITION,
+            "android.permission.health.READ_HEART_RATE",
+            "android.permission.HIGH_SAMPLING_RATE_SENSORS",
+            "com.samsung.android.hardware.sensormanager.permission.READ_ADDITIONAL_HEALTH_DATA"
+        )
+        val summary = names.joinToString("; ") { permission ->
+            val state = if (checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED) "granted" else "denied"
+            "${permission.substringAfterLast('.')}=$state"
+        }
+        onStatus("Permission status: $summary")
     }
 
     private fun checkForUpdate() {
