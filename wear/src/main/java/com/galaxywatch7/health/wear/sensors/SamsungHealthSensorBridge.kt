@@ -32,7 +32,7 @@ class SamsungHealthSensorBridge(private val context: Context) {
 
     fun connect(listener: Listener) {
         if (!isSdkPresent()) {
-            listener.onStatus("ECG unavailable: Samsung sensor SDK AAR not bundled in this build.")
+            listener.onStatus("ECG blocked: watch APK missing Samsung sensor SDK AAR. Phone app already replaces Samsung phone companion, but ECG electrodes must be read on watch.")
             return
         }
         runCatching {
@@ -67,7 +67,7 @@ class SamsungHealthSensorBridge(private val context: Context) {
 
     fun startEcg(listener: Listener, durationMillis: Long = 30_000L) {
         val connectedService = service ?: run {
-            listener.onStatus("ECG unavailable: watch sensor service not connected. Public ECG access still requires Samsung Health Sensor SDK on the watch.")
+            listener.onStatus("ECG blocked: watch sensor service not connected. Phone app can store/manage ECG, but cannot read watch electrodes directly.")
             return
         }
         runCatching {

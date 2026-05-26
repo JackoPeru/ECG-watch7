@@ -175,6 +175,12 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
                 loadExistingWearData()
             }
         })
+        root.addView(primaryButton("Clear logs").apply {
+            setOnClickListener {
+                getSharedPreferences("watch_logs", MODE_PRIVATE).edit().clear().apply()
+                logs.text = "No watch logs yet."
+            }
+        })
         root.addView(sectionTitle("Updates"))
         updateStatus = cardText("Version ${BuildConfig.VERSION_NAME}. Release GitHub non controllata.")
         root.addView(updateStatus)
@@ -222,11 +228,20 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
     }
 
     private fun primaryButton(textValue: String): Button = Button(this).apply {
+        val dp = resources.displayMetrics.density
+        fun Int.dp(): Int = (this * dp).toInt()
         text = textValue
         textSize = 14f
         setTextColor(Color.WHITE)
         gravity = Gravity.CENTER
         background = round(Color.rgb(8, 145, 178), 16)
+        minHeight = 46.dp()
+        layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            48.dp()
+        ).apply {
+            setMargins(0, 6.dp(), 0, 6.dp())
+        }
     }
 
     private fun round(color: Int, radius: Int): GradientDrawable =
@@ -424,7 +439,8 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
 
     private fun saveLog(entry: WatchLogEntry) {
         val prefs = getSharedPreferences("watch_logs", MODE_PRIVATE)
-        val line = "${entry.id} ${java.util.Date(entry.timestampEpochMillis)} [${entry.level}] ${entry.source}: ${entry.message}"
+        val time = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date(entry.timestampEpochMillis))
+        val line = "$time [${entry.level}] ${entry.source}: ${entry.message}"
         val existing = prefs.getString("lines", "").orEmpty().lines().filter { it.isNotBlank() }
         val next = (listOf(line) + existing.filterNot { it.contains(entry.id) }).take(80)
         prefs.edit().putString("lines", next.joinToString("\n")).apply()

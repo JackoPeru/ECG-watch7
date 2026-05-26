@@ -161,16 +161,16 @@ class MainActivity : Activity(), SamsungHealthSensorBridge.Listener {
         return Button(this).apply {
             text = label
             textSize = 11f
-            minHeight = 36.dp()
+            minHeight = 34.dp()
             minWidth = 0
             setPadding(6.dp(), 0, 6.dp(), 0)
             setTextColor(Color.WHITE)
             background = round(Color.rgb(8, 145, 178), 14.dp())
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                38.dp()
+                36.dp()
             ).apply {
-                setMargins(0, 4.dp(), 0, 4.dp())
+                setMargins(0, 6.dp(), 0, 6.dp())
             }
         }
     }

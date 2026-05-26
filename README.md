@@ -60,7 +60,7 @@ Android still requires user confirmation for APK install. APK signatures must ma
 
 Communication note: Wear Data Layer requires phone and watch APKs to share package id and signing certificate. From `v0.1.1`, both APKs use `com.galaxywatch7.health.mobile`. If you installed the old watch `v0.1.0`, uninstall `com.galaxywatch7.health.wear` once before installing the new watch APK.
 
-ECG note: this app avoids Samsung phone/Samsung Health Monitor, but raw ECG access on the watch still requires Samsung Health Sensor SDK and Samsung's watch-side Health Platform service. See [docs/ECG_ACCESS_LIMITS.md](docs/ECG_ACCESS_LIMITS.md).
+ECG note: this app replaces the Samsung phone companion/manager role, but raw ECG electrodes live on the watch and are exposed publicly only through Samsung Health Sensor SDK. Add `wear/libs/samsung-health-sensor-api.aar` before building a real ECG APK. See [docs/ECG_ACCESS_LIMITS.md](docs/ECG_ACCESS_LIMITS.md).
 
 ## Safety
 This app is wellness/research only. It does not diagnose, treat, or replace clinical ECG/BP tools.
