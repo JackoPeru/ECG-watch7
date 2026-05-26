@@ -32,7 +32,7 @@ class SamsungHealthSensorBridge(private val context: Context) {
 
     fun connect(listener: Listener) {
         if (!isSdkPresent()) {
-            listener.onStatus("Samsung Health Sensor SDK AAR missing. Add wear/libs/samsung-health-sensor-api.aar.")
+            listener.onStatus("ECG unavailable: Samsung sensor SDK AAR not bundled in this build.")
             return
         }
         runCatching {
@@ -44,18 +44,18 @@ class SamsungHealthSensorBridge(private val context: Context) {
             ) { _, method, args ->
                 when (method.name) {
                     "onConnectionSuccess" -> {
-                        listener.onStatus("Health Platform connected. ${supportedTrackerNames().joinToString()}")
+                        listener.onStatus("Watch sensor service ready. Trackers: ${supportedTrackerNames().joinToString()}")
                     }
                     "onConnectionFailed" -> {
-                        listener.onStatus("Health Platform connection failed: ${args?.firstOrNull()}")
+                        listener.onStatus("Watch sensor service failed: ${args?.firstOrNull()}")
                     }
-                    "onConnectionEnded" -> listener.onStatus("Health Platform connection ended.")
+                    "onConnectionEnded" -> listener.onStatus("Watch sensor service ended.")
                 }
                 null
             }
             service = serviceClass.getConstructor(connectionClass, Context::class.java).newInstance(proxy, context)
             serviceClass.getMethod("connectService").invoke(service)
-            listener.onStatus("Connecting Health Platform...")
+            listener.onStatus("Connecting watch sensor service...")
         }.onFailure {
             listener.onStatus("SDK connect error: ${it.message}")
         }
@@ -67,7 +67,7 @@ class SamsungHealthSensorBridge(private val context: Context) {
 
     fun startEcg(listener: Listener, durationMillis: Long = 30_000L) {
         val connectedService = service ?: run {
-            listener.onStatus("Health Platform not connected.")
+            listener.onStatus("ECG unavailable: watch sensor service not connected. Public ECG access still requires Samsung Health Sensor SDK on the watch.")
             return
         }
         runCatching {
@@ -135,7 +135,7 @@ class SamsungHealthSensorBridge(private val context: Context) {
 
     fun startBpResearchCapture(listener: Listener, durationMillis: Long = 20_000L) {
         val connectedService = service ?: run {
-            listener.onStatus("Health Platform not connected.")
+            listener.onStatus("BP capture unavailable: watch sensor service not connected.")
             return
         }
         runCatching {

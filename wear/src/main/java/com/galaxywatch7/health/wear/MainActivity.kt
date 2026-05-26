@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -106,11 +107,11 @@ class MainActivity : Activity(), SamsungHealthSensorBridge.Listener {
         root.addView(nodeStatus)
         status = TextView(this).apply {
             text = "Starting..."
-            textSize = 13f
+            textSize = 12f
             setTextColor(Color.rgb(226, 232, 240))
-            setPadding(14.dp(), 12.dp(), 14.dp(), 12.dp())
-            minHeight = 76.dp()
-            background = round(Color.rgb(15, 23, 42), 18.dp())
+            setPadding(12.dp(), 9.dp(), 12.dp(), 9.dp())
+            minHeight = 56.dp()
+            background = round(Color.rgb(15, 23, 42), 14.dp())
         }
         root.addView(status)
         sampleStatus = pill("No active recording", Color.rgb(8, 47, 73), 12f)
@@ -159,12 +160,18 @@ class MainActivity : Activity(), SamsungHealthSensorBridge.Listener {
         fun Int.dp(): Int = (this * dp).toInt()
         return Button(this).apply {
             text = label
-            textSize = 12f
-            minHeight = 44.dp()
+            textSize = 11f
+            minHeight = 36.dp()
             minWidth = 0
-            setPadding(8.dp(), 0, 8.dp(), 0)
+            setPadding(6.dp(), 0, 6.dp(), 0)
             setTextColor(Color.WHITE)
-            background = round(Color.rgb(14, 116, 144), 22.dp())
+            background = round(Color.rgb(8, 145, 178), 14.dp())
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                38.dp()
+            ).apply {
+                setMargins(0, 4.dp(), 0, 4.dp())
+            }
         }
     }
 
@@ -178,6 +185,12 @@ class MainActivity : Activity(), SamsungHealthSensorBridge.Listener {
             gravity = Gravity.CENTER
             setPadding(8.dp(), 7.dp(), 8.dp(), 7.dp())
             background = round(color, 18.dp())
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, 4.dp(), 0, 4.dp())
+            }
         }
     }
 

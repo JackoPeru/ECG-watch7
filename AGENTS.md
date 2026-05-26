@@ -21,6 +21,7 @@ Build a personal Android + Wear OS system for Galaxy Watch7 that records ECG raw
 - Wear Data Layer communication requires phone/watch apps to share applicationId and signing cert. From v0.1.1 both APKs use `com.galaxywatch7.health.mobile`; old watch package `com.galaxywatch7.health.wear` must be uninstalled once.
 - Watch UI targets Galaxy Watch7 44mm round 480x480 display: dark compact cards, short labels, no dense phone layout.
 - Watch logs are written as Data Layer DataItems so they queue offline and show on the phone when connection returns.
+- ECG access reality: app avoids Samsung phone/Samsung Health Monitor, but public raw ECG still requires Samsung Health Sensor SDK AAR and the Samsung watch-side Health Platform service. No standard Wear OS SensorManager ECG fallback exists.
 
 ## SDK Note
 Place Samsung's official `samsung-health-sensor-api.aar` at:

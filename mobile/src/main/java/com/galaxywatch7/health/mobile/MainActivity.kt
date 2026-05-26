@@ -105,12 +105,12 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(24.dp(), 24.dp(), 24.dp(), 32.dp())
-            setBackgroundColor(Color.rgb(246, 248, 251))
+            setBackgroundColor(Color.rgb(5, 7, 10))
         }
         fun label(text: String): TextView = TextView(this).apply {
             this.text = text
             textSize = 15f
-            setTextColor(Color.rgb(35, 39, 45))
+            setTextColor(Color.rgb(226, 232, 240))
             setPadding(0, 10.dp(), 0, 6.dp())
         }
 
@@ -118,12 +118,12 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
             text = "ECG Watch7"
             textSize = 30f
             typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.rgb(15, 23, 42))
+            setTextColor(Color.WHITE)
         })
         root.addView(TextView(this).apply {
             text = "Wellness/research only. Not for diagnosis."
             textSize = 13f
-            setTextColor(Color.rgb(100, 116, 139))
+            setTextColor(Color.rgb(148, 163, 184))
         })
         linkStatus = cardText("Link watch: checking...")
         root.addView(linkStatus)
@@ -157,7 +157,7 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
         root.addView(bp)
         chart = EcgChartView(this).apply {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 360.dp())
-            background = round(Color.WHITE, 18.dp())
+            background = round(Color.rgb(15, 23, 42), 18.dp())
         }
         root.addView(sectionTitle("ECG sessions"))
         root.addView(chart)
@@ -195,7 +195,7 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
         text = textValue
         textSize = 18f
         typeface = Typeface.DEFAULT_BOLD
-        setTextColor(Color.rgb(15, 23, 42))
+        setTextColor(Color.WHITE)
         setPadding(0, 22, 0, 8)
     }
 
@@ -204,9 +204,9 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
         fun Int.dp(): Int = (this * dp).toInt()
         text = textValue
         textSize = 14f
-        setTextColor(Color.rgb(30, 41, 59))
+        setTextColor(Color.rgb(226, 232, 240))
         setPadding(16.dp(), 14.dp(), 16.dp(), 14.dp())
-        background = round(Color.WHITE, 18.dp())
+        background = round(Color.rgb(15, 23, 42), 18.dp())
     }
 
     private fun input(hintValue: String, numeric: Boolean = true): EditText = EditText(this).apply {
@@ -215,8 +215,10 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
         hint = hintValue
         inputType = if (numeric) android.text.InputType.TYPE_CLASS_NUMBER else android.text.InputType.TYPE_CLASS_TEXT
         textSize = 15f
+        setTextColor(Color.WHITE)
+        setHintTextColor(Color.rgb(148, 163, 184))
         setPadding(14.dp(), 6.dp(), 14.dp(), 6.dp())
-        background = round(Color.WHITE, 14.dp())
+        background = round(Color.rgb(15, 23, 42), 14.dp())
     }
 
     private fun primaryButton(textValue: String): Button = Button(this).apply {
@@ -224,7 +226,7 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
         textSize = 14f
         setTextColor(Color.WHITE)
         gravity = Gravity.CENTER
-        background = round(Color.rgb(14, 116, 144), 18)
+        background = round(Color.rgb(8, 145, 178), 16)
     }
 
     private fun round(color: Int, radius: Int): GradientDrawable =
