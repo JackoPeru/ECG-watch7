@@ -3,6 +3,7 @@ package com.galaxywatch7.health.wear.sensors
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -15,6 +16,7 @@ import android.provider.Settings
 import com.galaxywatch7.health.shared.EcgSessionMetadata
 import com.galaxywatch7.health.shared.PpgMetrics
 import java.lang.reflect.Proxy
+import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.math.roundToInt
@@ -72,15 +74,26 @@ class SamsungHealthSensorBridge(private val context: Context) {
 
     fun openHealthPlatformSettings(listener: Listener) {
         runCatching {
-            val intent = Intent(
-                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                Uri.parse("package:com.samsung.android.service.health")
-            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
-            listener.onStatus("Opened Health Platform app settings. If visible, use Settings > Apps > Health Platform and tap title 10 times for [Dev mode].")
+            val launch = context.packageManager.getLaunchIntentForPackage(HEALTH_PLATFORM_PACKAGE)
+            if (launch != null) {
+                context.startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                listener.onStatus("Opened Health Platform launch screen. Tap Health Platform title/version about 10 times if visible.")
+            } else {
+                openHealthPlatformAppInfo(listener)
+            }
         }.onFailure {
             listener.onStatus("Cannot open Health Platform settings: ${it.message}")
         }
+    }
+
+    fun sendPolicyDiagnostic(listener: Listener) {
+        val hpInfo = healthPlatformInfo()
+        val sha256 = appSigningSha256()
+        val trackers = supportedTrackerNames().joinToString().ifBlank { "none/service not ready" }
+        listener.onStatus("Policy info: app=${context.packageName}; app SHA-256=$sha256")
+        listener.onStatus("Policy info: $hpInfo")
+        listener.onStatus("Policy info: Samsung SDK trackers=$trackers")
+        scanPublicSensors(listener)
     }
 
     fun disconnect() {
@@ -309,6 +322,62 @@ class SamsungHealthSensorBridge(private val context: Context) {
         trackers.orEmpty().map { it.toString() }
     }.getOrDefault(emptyList())
 
+    private fun openHealthPlatformAppInfo(listener: Listener) {
+        val intent = Intent(
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.parse("package:$HEALTH_PLATFORM_PACKAGE")
+        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+        listener.onStatus("Opened Health Platform app info. If no Dev mode appears after tapping title/version, Samsung policy approval is required.")
+    }
+
+    private fun healthPlatformInfo(): String = runCatching {
+        val info = context.packageManager.getPackageInfo(HEALTH_PLATFORM_PACKAGE, 0)
+        "Health Platform ${info.versionName ?: "unknown"} (${info.longVersionCode}) installed"
+    }.getOrDefault("Health Platform package $HEALTH_PLATFORM_PACKAGE not found")
+
+    private fun appSigningSha256(): String = runCatching {
+        val info = context.packageManager.getPackageInfo(
+            context.packageName,
+            PackageManager.GET_SIGNING_CERTIFICATES
+        )
+        val cert = info.signingInfo?.apkContentsSigners?.firstOrNull()?.toByteArray()
+            ?: return@runCatching "unknown"
+        MessageDigest.getInstance("SHA-256")
+            .digest(cert)
+            .joinToString(":") { "%02X".format(it) }
+    }.getOrDefault("unknown")
+
+    private fun scanPublicSensors(listener: Listener) {
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        if (sensorManager == null) {
+            listener.onStatus("Public sensor scan: SensorManager unavailable.")
+            return
+        }
+        val sensors = sensorManager.getSensorList(Sensor.TYPE_ALL)
+        val interesting = sensors.filter {
+            val text = "${it.name} ${it.vendor} ${it.stringType}".lowercase()
+            text.contains("ecg") ||
+                text.contains("ppg") ||
+                text.contains("heart") ||
+                text.contains("bio") ||
+                it.type == Sensor.TYPE_HEART_RATE ||
+                it.type == Sensor.TYPE_HEART_BEAT
+        }
+        if (interesting.isEmpty()) {
+            listener.onStatus("Public sensor scan: ${sensors.size} sensors, no public ECG/PPG/HR raw sensor listed.")
+            return
+        }
+        interesting.take(8).forEach { sensor ->
+            listener.onStatus(
+                "Public sensor: name=${sensor.name}; type=${sensor.type}; string=${sensor.stringType}; vendor=${sensor.vendor}"
+            )
+        }
+        if (interesting.size > 8) {
+            listener.onStatus("Public sensor scan: ${interesting.size - 8} more interesting sensors omitted.")
+        }
+    }
+
     private fun handleConnectionFailure(error: Any?, listener: Listener) {
         val message = error?.toString().orEmpty()
         val code = runCatching { error?.javaClass?.getMethod("getErrorCode")?.invoke(error) as? Int }.getOrNull()
@@ -339,5 +408,9 @@ class SamsungHealthSensorBridge(private val context: Context) {
     private fun readValue(point: Any, key: Any): Any? {
         val method = point.javaClass.methods.firstOrNull { it.name == "getValue" && it.parameterTypes.size == 1 }
         return method?.invoke(point, key)
+    }
+
+    private companion object {
+        const val HEALTH_PLATFORM_PACKAGE = "com.samsung.android.service.health"
     }
 }

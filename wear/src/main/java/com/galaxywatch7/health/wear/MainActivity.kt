@@ -132,6 +132,9 @@ class MainActivity : Activity(), SamsungHealthSensorBridge.Listener {
         root.addView(actionButton("Health Platform").apply {
             setOnClickListener { bridge.openHealthPlatformSettings(this@MainActivity) }
         })
+        root.addView(actionButton("Policy info").apply {
+            setOnClickListener { bridge.sendPolicyDiagnostic(this@MainActivity) }
+        })
         logPreview = TextView(this).apply {
             text = "Logs will appear here."
             textSize = 10f

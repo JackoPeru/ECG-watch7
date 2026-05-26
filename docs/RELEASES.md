@@ -55,6 +55,8 @@ Questa modalita' e' solo per test/debug. Per distribuzione reale Samsung richied
 
 Da `v0.1.8`, il watch non salva piu' sessioni ECG da 0 campioni quando Samsung blocca il tracker. L'app mostra `ECG request sent` finche' arrivano veri campioni raw. Per BP research, se Samsung blocca `HEART_RATE_CONTINUOUS`, viene provato il fallback Android pubblico `TYPE_HEART_RATE`; questo non fornisce ECG raw o PPG raw.
 
+Da `v0.1.9`, il watch ha il bottone `Policy info`: manda al telefono package name, SHA-256 firma APK, versione Health Platform, tracker Samsung disponibili e sensori Android pubblici visibili. Questi dati servono per capire se resta solo il blocco policy Samsung o se il firmware espone un fallback sensori pubblico.
+
 ## Migrazione v0.1.1
 Wear Data Layer richiede stesso package name e stessa firma tra telefono e orologio. Da `v0.1.1`, anche l'APK watch usa:
 
