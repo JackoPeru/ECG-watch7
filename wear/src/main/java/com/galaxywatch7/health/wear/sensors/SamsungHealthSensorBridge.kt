@@ -3,6 +3,10 @@ package com.galaxywatch7.health.wear.sensors
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
@@ -28,6 +32,7 @@ class SamsungHealthSensorBridge(private val context: Context) {
     private var ecgTracker: Any? = null
     private var hrTracker: Any? = null
     private var activeListener: Any? = null
+    private var androidHrListener: SensorEventListener? = null
     private val hrValues = CopyOnWriteArrayList<Int>()
 
     fun isSdkPresent(): Boolean = runCatching {
@@ -79,6 +84,7 @@ class SamsungHealthSensorBridge(private val context: Context) {
     }
 
     fun disconnect() {
+        unregisterAndroidHrFallback()
         runCatching { service?.javaClass?.getMethod("disconnectService")?.invoke(service) }
     }
 
@@ -101,9 +107,13 @@ class SamsungHealthSensorBridge(private val context: Context) {
             val startedAt = System.currentTimeMillis()
             var leadOffSamples = 0
             var lastProgressSecond = -1
+            var firstDataLogged = false
+            var stopped = false
+            var finishRunnable: Runnable? = null
             val proxy = Proxy.newProxyInstance(eventClass.classLoader, arrayOf(eventClass)) { _, method, args ->
                 when (method.name) {
                     "onDataReceived" -> {
+                        if (stopped) return@newProxyInstance null
                         val points = args?.firstOrNull() as? List<*> ?: emptyList<Any>()
                         points.forEach { point ->
                             if (point != null) {
@@ -116,6 +126,10 @@ class SamsungHealthSensorBridge(private val context: Context) {
                                 }
                             }
                         }
+                        if (!firstDataLogged && (samples.isNotEmpty() || leadOffSamples > 0)) {
+                            firstDataLogged = true
+                            listener.onStatus("ECG recording active. Keep still, finger on top button.")
+                        }
                         val elapsedSeconds = ((System.currentTimeMillis() - startedAt) / 1000L).toInt()
                         val secondsLeft = (durationMillis / 1000L).toInt() - elapsedSeconds
                         if (secondsLeft != lastProgressSecond) {
@@ -123,16 +137,32 @@ class SamsungHealthSensorBridge(private val context: Context) {
                             listener.onEcgProgress(secondsLeft.coerceAtLeast(0), samples.size, leadOffSamples)
                         }
                     }
-                    "onError" -> listener.onStatus("ECG tracker error: ${args?.firstOrNull()}")
+                    "onError" -> {
+                        if (!stopped) {
+                            stopped = true
+                            finishRunnable?.let { main.removeCallbacks(it) }
+                            runCatching { ecgTracker?.javaClass?.getMethod("unsetEventListener")?.invoke(ecgTracker) }
+                            listener.onStatus(
+                                "ECG blocked by Samsung policy/service: ${args?.firstOrNull()}. " +
+                                    "No public Android ECG fallback exists; enable Health Platform Dev mode or register package/signature with Samsung."
+                            )
+                        }
+                    }
                     "onFlushCompleted" -> listener.onStatus("ECG tracker flush complete.")
                 }
                 null
             }
             activeListener = proxy
             ecgTracker?.javaClass?.getMethod("setEventListener", eventClass)?.invoke(ecgTracker, proxy)
-            listener.onStatus("ECG recording started.")
-            main.postDelayed({
+            listener.onStatus("ECG request sent. Waiting first raw samples...")
+            finishRunnable = Runnable {
+                if (stopped) return@Runnable
+                stopped = true
                 runCatching { ecgTracker?.javaClass?.getMethod("unsetEventListener")?.invoke(ecgTracker) }
+                if (samples.isEmpty()) {
+                    listener.onStatus("ECG ended with 0 samples. Session not saved.")
+                    return@Runnable
+                }
                 val endedAt = System.currentTimeMillis()
                 val metadata = EcgSessionMetadata(
                     id = UUID.randomUUID().toString(),
@@ -144,7 +174,8 @@ class SamsungHealthSensorBridge(private val context: Context) {
                     sampleFileName = "ecg_${startedAt}.bin"
                 )
                 listener.onEcgComplete(metadata, samples.toFloatArray())
-            }, durationMillis)
+            }
+            main.postDelayed(finishRunnable!!, durationMillis)
         }.onFailure {
             listener.onStatus("ECG start failed: ${it.message}")
         }
@@ -164,22 +195,39 @@ class SamsungHealthSensorBridge(private val context: Context) {
             val hrKey = hrSet.getField("HEART_RATE").get(null)
             val eventClass = Class.forName("com.samsung.android.service.health.tracking.HealthTracker\$TrackerEventListener")
             hrValues.clear()
+            var failed = false
+            var firstDataLogged = false
+            var finishRunnable: Runnable? = null
             val proxy = Proxy.newProxyInstance(eventClass.classLoader, arrayOf(eventClass)) { _, method, args ->
                 when (method.name) {
                     "onDataReceived" -> {
+                        if (failed) return@newProxyInstance null
                         val points = args?.firstOrNull() as? List<*> ?: emptyList<Any>()
                         points.forEach { point ->
                             val value = if (point == null) null else readValue(point, hrKey) as? Number
                             if (value != null && value.toInt() in 30..220) hrValues.add(value.toInt())
                         }
+                        if (!firstDataLogged && hrValues.isNotEmpty()) {
+                            firstDataLogged = true
+                            listener.onStatus("BP research capture active via Samsung HR tracker.")
+                        }
                     }
-                    "onError" -> listener.onStatus("HR tracker error: ${args?.firstOrNull()}")
+                    "onError" -> {
+                        if (!failed) {
+                            failed = true
+                            finishRunnable?.let { main.removeCallbacks(it) }
+                            runCatching { hrTracker?.javaClass?.getMethod("unsetEventListener")?.invoke(hrTracker) }
+                            listener.onStatus("HR tracker blocked by Samsung policy/service: ${args?.firstOrNull()}. Trying Android heart-rate fallback.")
+                            main.post { startAndroidHeartRateFallback(listener, durationMillis) }
+                        }
+                    }
                 }
                 null
             }
             hrTracker?.javaClass?.getMethod("setEventListener", eventClass)?.invoke(hrTracker, proxy)
-            listener.onStatus("BP research capture started.")
-            main.postDelayed({
+            listener.onStatus("BP research request sent. Waiting HR samples...")
+            finishRunnable = Runnable {
+                if (failed) return@Runnable
                 runCatching { hrTracker?.javaClass?.getMethod("unsetEventListener")?.invoke(hrTracker) }
                 val pulse = hrValues.average().takeIf { !it.isNaN() }?.roundToInt()
                 if (pulse == null) {
@@ -194,10 +242,65 @@ class SamsungHealthSensorBridge(private val context: Context) {
                         )
                     )
                 }
-            }, durationMillis)
+            }
+            main.postDelayed(finishRunnable!!, durationMillis)
         }.onFailure {
             listener.onStatus("BP capture failed: ${it.message}")
         }
+    }
+
+    private fun startAndroidHeartRateFallback(listener: Listener, durationMillis: Long) {
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        val heartRateSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_HEART_RATE)
+        if (sensorManager == null || heartRateSensor == null) {
+            listener.onStatus("Android HR fallback unavailable: no public heart-rate sensor exposed.")
+            return
+        }
+
+        val values = CopyOnWriteArrayList<Int>()
+        unregisterAndroidHrFallback()
+        val fallbackListener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                val value = event.values.firstOrNull()?.roundToInt() ?: return
+                if (value in 30..220) values.add(value)
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+        }
+        androidHrListener = fallbackListener
+        val registered = sensorManager.registerListener(
+            fallbackListener,
+            heartRateSensor,
+            SensorManager.SENSOR_DELAY_NORMAL
+        )
+        if (!registered) {
+            androidHrListener = null
+            listener.onStatus("Android HR fallback unavailable: sensor listener rejected.")
+            return
+        }
+
+        listener.onStatus("Android HR fallback active. BP remains research-only; no raw ECG/PPG fallback.")
+        main.postDelayed({
+            unregisterAndroidHrFallback()
+            val pulse = values.average().takeIf { !it.isNaN() }?.roundToInt()
+            if (pulse == null) {
+                listener.onStatus("Android HR fallback captured no valid pulse.")
+            } else {
+                listener.onPpgMetrics(
+                    PpgMetrics(
+                        pulse = pulse,
+                        signalQuality = (values.size / 20f).coerceIn(0.05f, 0.75f),
+                        capturedAtEpochMillis = System.currentTimeMillis()
+                    )
+                )
+            }
+        }, durationMillis)
+    }
+
+    private fun unregisterAndroidHrFallback() {
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        androidHrListener?.let { sensorManager?.unregisterListener(it) }
+        androidHrListener = null
     }
 
     private fun supportedTrackerNames(): List<String> = runCatching {

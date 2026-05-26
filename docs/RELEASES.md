@@ -53,6 +53,8 @@ Se sul watch compare `SDK_POLICY_ERROR`, non basta Android `Developer options`. 
 
 Questa modalita' e' solo per test/debug. Per distribuzione reale Samsung richiede partner approval con package name e firma registrati.
 
+Da `v0.1.8`, il watch non salva piu' sessioni ECG da 0 campioni quando Samsung blocca il tracker. L'app mostra `ECG request sent` finche' arrivano veri campioni raw. Per BP research, se Samsung blocca `HEART_RATE_CONTINUOUS`, viene provato il fallback Android pubblico `TYPE_HEART_RATE`; questo non fornisce ECG raw o PPG raw.
+
 ## Migrazione v0.1.1
 Wear Data Layer richiede stesso package name e stessa firma tra telefono e orologio. Da `v0.1.1`, anche l'APK watch usa:
 

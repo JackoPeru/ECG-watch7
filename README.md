@@ -72,5 +72,7 @@ Raw ECG analysis is implemented locally in `shared` and displayed on the phone a
 
 If the watch logs `SDK_POLICY_ERROR`, enable **Health Platform** developer mode on the watch: `Settings > Apps > Health Platform`, then tap the `Health Platform` title about 10 times until `[Dev mode]` appears. This is different from Android Developer options.
 
+From v0.1.8, ECG sessions are saved only after real raw samples arrive. If Samsung policy blocks ECG, the app shows the policy block and does not create a zero-sample ECG. BP research can fall back to Android's public heart-rate sensor, but public Android APIs do not expose Galaxy Watch ECG electrodes or raw PPG.
+
 ## Safety
 This app is wellness/research only. It does not diagnose, treat, or replace clinical ECG/BP tools.
