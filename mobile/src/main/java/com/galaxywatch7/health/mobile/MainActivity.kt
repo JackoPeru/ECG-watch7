@@ -22,6 +22,8 @@ import com.galaxywatch7.health.shared.EcgSessionMetadata
 import com.galaxywatch7.health.shared.HealthJson
 import com.galaxywatch7.health.shared.PpgMetrics
 import com.galaxywatch7.health.shared.WearPaths
+import com.galaxywatch7.health.shared.updates.GitHubReleaseUpdater
+import com.galaxywatch7.health.shared.updates.UpdateCheckResult
 import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.wearable.Asset
 import com.google.android.gms.wearable.DataClient
@@ -39,10 +41,13 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
     private lateinit var status: TextView
     private lateinit var sessions: TextView
     private lateinit var bp: TextView
+    private lateinit var updateStatus: TextView
     private lateinit var chart: EcgChartView
     private val io = Executors.newSingleThreadExecutor()
     private var selectedSession: EcgSessionMetadata? = null
     private var selectedSamples: FloatArray = FloatArray(0)
+    private var updateCheck: UpdateCheckResult? = null
+    private var updateApk: File? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -136,6 +141,21 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
             text = "Export selected CSV/PDF"
             setOnClickListener { exportSelected() }
         })
+        root.addView(label("Updates"))
+        updateStatus = label("Version ${BuildConfig.VERSION_NAME}. Release GitHub non controllata.")
+        root.addView(updateStatus)
+        root.addView(Button(this).apply {
+            text = "Check GitHub release"
+            setOnClickListener { checkForUpdate() }
+        })
+        root.addView(Button(this).apply {
+            text = "Download update"
+            setOnClickListener { downloadUpdate() }
+        })
+        root.addView(Button(this).apply {
+            text = "Install update"
+            setOnClickListener { installUpdate() }
+        })
 
         return ScrollView(this).apply { addView(root) }
     }
@@ -228,5 +248,56 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
         file.outputStream().use { document.writeTo(it) }
         document.close()
     }
-}
 
+    private fun checkForUpdate() {
+        updateStatus.text = "Checking GitHub releases..."
+        io.execute {
+            val result = GitHubReleaseUpdater.check(BuildConfig.VERSION_NAME, "mobile")
+            updateCheck = result
+            updateApk = result.latestVersion?.let { GitHubReleaseUpdater.findDownloadedApk(this, it, "mobile") }
+            runOnUiThread {
+                val notes = if (result.releaseNotes.isBlank()) "" else "\n\nNovita':\n${result.releaseNotes}"
+                val asset = result.assetName?.let { "\nAsset: $it" } ?: ""
+                val downloaded = if (updateApk != null) "\nAPK gia' scaricato." else ""
+                updateStatus.text = result.message + asset + downloaded + notes
+            }
+        }
+    }
+
+    private fun downloadUpdate() {
+        val result = updateCheck ?: run {
+            updateStatus.text = "Controlla release prima di scaricare."
+            return
+        }
+        val assetUrl = result.assetUrl ?: run {
+            updateStatus.text = "Nessun asset mobile APK nella release."
+            return
+        }
+        val version = result.latestVersion ?: return
+        updateStatus.text = "Download update mobile..."
+        io.execute {
+            val file = GitHubReleaseUpdater.downloadApk(this, assetUrl, version, "mobile") { progress ->
+                runOnUiThread {
+                    updateStatus.text = "${progress.message}\n${progress.sizeLabel}"
+                }
+            }
+            updateApk = file
+            runOnUiThread {
+                updateStatus.text = if (file == null) {
+                    "Download update fallito."
+                } else {
+                    "Download completato: ${file.name}. Premi Install update."
+                }
+            }
+        }
+    }
+
+    private fun installUpdate() {
+        val file = updateApk ?: updateCheck?.latestVersion?.let { GitHubReleaseUpdater.findDownloadedApk(this, it, "mobile") }
+        updateStatus.text = if (file == null) {
+            "APK update non trovato. Scaricalo prima."
+        } else {
+            GitHubReleaseUpdater.installDownloadedApk(this, file)
+        }
+    }
+}

@@ -8,4 +8,4 @@ captures/
 .externalNativeBuild/
 .cxx/
 wear/libs/samsung-health-sensor-api.aar
-
+release-assets/

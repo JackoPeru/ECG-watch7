@@ -22,13 +22,20 @@ Create a native Android + Wear OS app pair for personal use:
 - Phone app allows cuff calibration entry.
 - Phone app computes BP estimate only when valid calibration exists.
 - Phone app exports CSV and PDF into app documents directory.
+- Mobile and wear apps check GitHub Releases, download matching APK assets, and open the platform installer for updates.
 
 ## Safety Language
 All BP and ECG screens must identify data as wellness/research information only. Results must not claim detection, diagnosis, treatment, or medical-grade accuracy.
+
+## Update System
+- Latest release endpoint: `https://api.github.com/repos/JackoPeru/ECG-watch7/releases/latest`.
+- Mobile asset names must include `mobile` and end in `.apk`.
+- Wear asset names must include `wear` and end in `.apk`.
+- Android requires same package id and same APK signing certificate for upgrades.
+- Install is user-confirmed; no silent update in v1.
 
 ## Development Setup
 - Java 17.
 - Android SDK API 36 installed.
 - ADB available at `C:\Users\Matteo\AppData\Local\Android\Sdk\platform-tools\adb.exe`.
 - Gradle wrapper included in project after setup.
-

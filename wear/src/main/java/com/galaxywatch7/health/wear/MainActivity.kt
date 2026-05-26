@@ -12,13 +12,20 @@ import android.widget.ScrollView
 import android.widget.TextView
 import com.galaxywatch7.health.shared.EcgSessionMetadata
 import com.galaxywatch7.health.shared.PpgMetrics
+import com.galaxywatch7.health.shared.updates.GitHubReleaseUpdater
+import com.galaxywatch7.health.shared.updates.UpdateCheckResult
 import com.galaxywatch7.health.wear.sensors.SamsungHealthSensorBridge
 import com.galaxywatch7.health.wear.sync.WearSyncClient
+import java.io.File
+import java.util.concurrent.Executors
 
 class MainActivity : Activity(), SamsungHealthSensorBridge.Listener {
     private lateinit var status: TextView
     private lateinit var bridge: SamsungHealthSensorBridge
     private lateinit var sync: WearSyncClient
+    private val io = Executors.newSingleThreadExecutor()
+    private var updateCheck: UpdateCheckResult? = null
+    private var updateApk: File? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -74,8 +81,20 @@ class MainActivity : Activity(), SamsungHealthSensorBridge.Listener {
             text = "BP research capture"
             setOnClickListener { bridge.startBpResearchCapture(this@MainActivity) }
         })
+        root.addView(Button(this).apply {
+            text = "Check update"
+            setOnClickListener { checkForUpdate() }
+        })
+        root.addView(Button(this).apply {
+            text = "Download update"
+            setOnClickListener { downloadUpdate() }
+        })
+        root.addView(Button(this).apply {
+            text = "Install update"
+            setOnClickListener { installUpdate() }
+        })
         root.addView(TextView(this).apply {
-            text = "Wellness/research only. Not diagnostic."
+            text = "Wellness/research only. Not diagnostic. v${BuildConfig.VERSION_NAME}"
             textSize = 12f
             setTextColor(Color.LTGRAY)
         })
@@ -95,5 +114,42 @@ class MainActivity : Activity(), SamsungHealthSensorBridge.Listener {
             .filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
             .toTypedArray()
         if (missing.isNotEmpty()) requestPermissions(missing, 10)
+    }
+
+    private fun checkForUpdate() {
+        onStatus("Checking GitHub releases...")
+        io.execute {
+            val result = GitHubReleaseUpdater.check(BuildConfig.VERSION_NAME, "wear")
+            updateCheck = result
+            updateApk = result.latestVersion?.let { GitHubReleaseUpdater.findDownloadedApk(this, it, "wear") }
+            val asset = result.assetName?.let { " Asset: $it." } ?: ""
+            val downloaded = if (updateApk != null) " APK downloaded." else ""
+            runOnUiThread { status.text = result.message + asset + downloaded }
+        }
+    }
+
+    private fun downloadUpdate() {
+        val result = updateCheck ?: run {
+            onStatus("Check release first.")
+            return
+        }
+        val assetUrl = result.assetUrl ?: run {
+            onStatus("No wear APK asset in release.")
+            return
+        }
+        val version = result.latestVersion ?: return
+        onStatus("Downloading wear update...")
+        io.execute {
+            val file = GitHubReleaseUpdater.downloadApk(this, assetUrl, version, "wear") { progress ->
+                runOnUiThread { status.text = "${progress.message} ${progress.sizeLabel}" }
+            }
+            updateApk = file
+            runOnUiThread { status.text = if (file == null) "Download failed." else "Downloaded ${file.name}. Install update." }
+        }
+    }
+
+    private fun installUpdate() {
+        val file = updateApk ?: updateCheck?.latestVersion?.let { GitHubReleaseUpdater.findDownloadedApk(this, it, "wear") }
+        onStatus(if (file == null) "APK not found. Download first." else GitHubReleaseUpdater.installDownloadedApk(this, file))
     }
 }

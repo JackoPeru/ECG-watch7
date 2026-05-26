@@ -16,6 +16,8 @@ Build a personal Android + Wear OS system for Galaxy Watch7 that records ECG raw
 - `:mobile`: Android phone companion for local storage, charts, calibration, export.
 - `:shared`: Shared models, codecs, commands, and research BP estimator.
 - Gradle wrapper is included; Java 17 and Android SDK API 36 are the verified local build base.
+- Internal updater checks GitHub Releases for `JackoPeru/ECG-watch7`, downloads `mobile`/`wear` APK assets, then opens Android installer. No silent install.
+- For personal update chain, create release assets from this same machine or a stable signing keystore; Android rejects APKs signed with a different cert.
 
 ## SDK Note
 Place Samsung's official `samsung-health-sensor-api.aar` at:

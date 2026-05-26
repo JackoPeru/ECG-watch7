@@ -40,5 +40,23 @@ Use the local Android SDK ADB:
 
 Install the mobile APK on the phone and the wear APK on the watch.
 
+## Internal Updates
+Both apps can check GitHub Releases, download their matching APK asset, and open Android's installer.
+
+Expected release assets:
+
+```text
+Watch7Health-mobile-X.Y.Z.apk
+Watch7Health-wear-X.Y.Z.apk
+```
+
+Create a release from this machine:
+
+```powershell
+.\scripts\create-github-release.ps1 -Tag v0.1.1 -Notes "Release notes"
+```
+
+Android still requires user confirmation for APK install. APK signatures must match the currently installed app.
+
 ## Safety
 This app is wellness/research only. It does not diagnose, treat, or replace clinical ECG/BP tools.

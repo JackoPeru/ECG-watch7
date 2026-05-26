@@ -14,6 +14,10 @@ android {
         versionCode = 1
         versionName = "0.1.0"
     }
+
+    buildFeatures {
+        buildConfig = true
+    }
 }
 
 kotlin {
@@ -26,4 +30,3 @@ dependencies {
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("com.google.android.gms:play-services-wearable:18.2.0")
 }
-
