@@ -62,5 +62,7 @@ Communication note: Wear Data Layer requires phone and watch APKs to share packa
 
 ECG note: this app replaces the Samsung phone companion/manager role, but raw ECG electrodes live on the watch and are exposed publicly only through Samsung Health Sensor SDK. Add `wear/libs/samsung-health-sensor-api.aar` before building a real ECG APK. See [docs/ECG_ACCESS_LIMITS.md](docs/ECG_ACCESS_LIMITS.md).
 
+Raw ECG analysis is implemented locally in `shared` and displayed on the phone after a watch session arrives. See [docs/ECG_RAW_ANALYSIS.md](docs/ECG_RAW_ANALYSIS.md).
+
 ## Safety
 This app is wellness/research only. It does not diagnose, treat, or replace clinical ECG/BP tools.

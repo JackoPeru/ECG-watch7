@@ -5,6 +5,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
+import kotlin.math.PI
+import kotlin.math.sin
 
 class SharedModelTest {
     @Test
@@ -46,5 +48,22 @@ class SharedModelTest {
         assertEquals(122, estimate.systolic)
         assertEquals(81, estimate.diastolic)
     }
-}
 
+    @Test
+    fun ecgAnalyzerDetectsSyntheticRhythm() {
+        val rate = 500
+        val samples = FloatArray(rate * 20)
+        for (i in samples.indices) {
+            val t = i.toFloat() / rate
+            samples[i] = (0.03f * sin(2f * PI.toFloat() * 1.2f * t))
+            if (i % rate in 0..8) {
+                samples[i] += 1.0f - (i % rate) * 0.08f
+            }
+        }
+
+        val analysis = EcgAnalyzer.analyze(samples, rate, 1_000L)
+        assertNotNull(analysis.heartRateBpm)
+        assertEquals(60.0, analysis.heartRateBpm!!.toDouble(), 8.0)
+        assertEquals(true, analysis.signalQuality > 0.2f)
+    }
+}

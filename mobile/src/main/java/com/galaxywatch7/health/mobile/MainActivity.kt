@@ -20,6 +20,7 @@ import com.galaxywatch7.health.mobile.ui.EcgChartView
 import com.galaxywatch7.health.shared.BpCalibration
 import com.galaxywatch7.health.shared.BpEstimator
 import com.galaxywatch7.health.shared.CsvExport
+import com.galaxywatch7.health.shared.EcgAnalyzer
 import com.galaxywatch7.health.shared.EcgBinaryCodec
 import com.galaxywatch7.health.shared.EcgSessionMetadata
 import com.galaxywatch7.health.shared.HealthJson
@@ -49,6 +50,7 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
     private lateinit var updateStatus: TextView
     private lateinit var linkStatus: TextView
     private lateinit var logs: TextView
+    private lateinit var ecgAnalysis: TextView
     private lateinit var chart: EcgChartView
     private val io = Executors.newSingleThreadExecutor()
     private var selectedSession: EcgSessionMetadata? = null
@@ -161,6 +163,8 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
         }
         root.addView(sectionTitle("ECG sessions"))
         root.addView(chart)
+        ecgAnalysis = cardText("No ECG raw data to analyze yet.")
+        root.addView(ecgAnalysis)
         sessions = label("")
         root.addView(sessions)
         root.addView(primaryButton("Export selected CSV/PDF").apply {
@@ -260,8 +264,10 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
             store.saveEcgSession(metadata, samples)
             selectedSession = metadata
             selectedSamples = samples
+            val analysis = EcgAnalyzer.analyze(samples, metadata.sampleRateHz, metadata.startedAtEpochMillis)
             runOnUiThread {
                 status.text = "Received ECG ${metadata.sampleCount} samples."
+                ecgAnalysis.text = analysisText(analysis)
                 refresh()
             }
         }
@@ -302,6 +308,9 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
             selectedSamples = store.readEcgSamples(allSessions.first())
         }
         chart.samples = selectedSamples
+        if (::ecgAnalysis.isInitialized && selectedSession != null && selectedSamples.isNotEmpty()) {
+            ecgAnalysis.text = analysisText(EcgAnalyzer.analyze(selectedSamples, selectedSession!!.sampleRateHz, selectedSession!!.startedAtEpochMillis))
+        }
         bp.text = if (calibration == null) {
             "No cuff calibration saved."
         } else {
@@ -347,6 +356,14 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
         document.finishPage(page)
         file.outputStream().use { document.writeTo(it) }
         document.close()
+    }
+
+    private fun analysisText(analysis: com.galaxywatch7.health.shared.EcgAnalysis): String {
+        val hr = analysis.heartRateBpm?.let { "$it bpm" } ?: "n/a"
+        val rr = analysis.meanRrMillis?.let { "$it ms" } ?: "n/a"
+        val peaks = analysis.rPeaks.size
+        val quality = "%.2f".format(analysis.signalQuality)
+        return "Raw ECG analysis\nHR: $hr\nR-peaks: $peaks\nMean RR: $rr\nQuality: $quality\n${analysis.status}\nResearch only."
     }
 
     private fun checkForUpdate() {
