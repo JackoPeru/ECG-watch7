@@ -22,6 +22,14 @@ Per uso personale/dev mode, crea release da questa macchina con:
 
 Questo usa gli APK debug locali e mantiene compatibilita con app installate da build locale della stessa macchina.
 
+Da ora lo script blocca la release se manca:
+
+```text
+wear/libs/samsung-health-sensor-api.aar
+```
+
+Usare `-AllowNoSensorSdk` solo per release UI/debug senza ECG reale.
+
 ## Flusso Utente
 Nell'app:
 

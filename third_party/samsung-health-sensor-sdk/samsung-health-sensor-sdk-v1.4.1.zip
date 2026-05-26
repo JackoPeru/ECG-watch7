@@ -1,0 +1,17 @@
+
+    <!DOCTYPE html>
+    <head><script src="https://account.samsung.com/resources/libs/account-internal/2.0.0/account-internal.min.js"></script></head>
+    <body>
+    <script>
+      window.samsung.account.signIn({
+        clientId: "x1a86ah5j4",
+        redirectUri: "https%3A%2F%2Fdeveloper.samsung.com%2Fsa%2Fsignin%2Fcallback",
+        responseType: "code", 
+        scope: "openid",
+        state: ".eyJjb21tYW5kIjoibG9naW4iLCJpYXQiOjE3Nzk4MDYwNDQsImV4cCI6MTc3OTgwNjM0NH0.L0u9-coaZ2lFBVZ7mVn-0ialG25YbN7ccdcCxVHehMg"
+      }, {
+        locale: "*"
+      });
+    </script>
+    </body>
+  

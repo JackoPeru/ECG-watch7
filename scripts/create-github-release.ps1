@@ -3,7 +3,9 @@ param(
     [string] $Tag,
 
     [string] $Title = "",
-    [string] $Notes = ""
+    [string] $Notes = "",
+
+    [switch] $AllowNoSensorSdk
 )
 
 $ErrorActionPreference = "Stop"
@@ -21,6 +23,11 @@ if ([string]::IsNullOrWhiteSpace($Notes)) {
 }
 
 gh auth status | Out-Null
+
+$sensorSdk = "wear\libs\samsung-health-sensor-api.aar"
+if (!(Test-Path $sensorSdk) -and !$AllowNoSensorSdk) {
+    throw "Missing $sensorSdk. Download Samsung Health Sensor SDK from Samsung Developer while logged in, extract samsung-health-sensor-api.aar, then rerun. Use -AllowNoSensorSdk only for UI-only releases."
+}
 
 .\gradlew.bat :shared:testDebugUnitTest :mobile:assembleDebug :wear:assembleDebug --no-daemon
 
@@ -41,4 +48,3 @@ Write-Host "Release created: https://github.com/JackoPeru/ECG-watch7/releases/ta
 Write-Host "Assets:"
 Write-Host " - $mobileAsset"
 Write-Host " - $wearAsset"
-
