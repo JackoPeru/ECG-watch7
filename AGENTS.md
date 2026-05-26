@@ -33,6 +33,7 @@ Build a personal Android + Wear OS system for Galaxy Watch7 that records ECG raw
 - v0.2.3 adds explicit watch permission diagnostics and gating: ECG capture requests/checks BODY_SENSORS/ACTIVITY_RECOGNITION/READ_HEART_RATE before starting, logs normal/signature permissions, and declares HIGH_SAMPLING_RATE_SENSORS.
 - v0.2.4 improves BODY_SENSORS recovery: if runtime request does not grant it, the watch opens app settings for manual permission enable. Wear update DataItems are frozen immediately and deleted after APK save to avoid repeated "received update" logs / buffer closed errors.
 - Added `scripts/grant-watch-permissions.ps1` for legitimate dev-mode ADB permission grants on the user's own watch. Do not add exploit/root/signature-spoof bypasses.
+- The grant helper also sets AppOps `BODY_SENSORS`/`ACTIVITY_RECOGNITION` to `allow`. If ECG still gets `SensorManager.registerListener=false` and Samsung SDK returns `SDK_POLICY_ERROR`, the remaining block is Samsung firmware/policy rather than Android runtime permission.
 
 ## SDK Note
 Place Samsung's official `samsung-health-sensor-api.aar` at:

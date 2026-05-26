@@ -75,6 +75,8 @@ Se Wear OS non mostra il toggle `Body sensors`, usare ADB in modalita' sviluppo 
 
 Questo usa `pm grant`, non root o patch di sistema. Serve solo per test/dev su dispositivo personale.
 
+Lo script imposta anche AppOps `BODY_SENSORS`/`ACTIVITY_RECOGNITION` su `allow`, per coprire il caso in cui il permesso risulti concesso ma l'operazione sensore resti bloccata.
+
 ## Migrazione v0.1.1
 Wear Data Layer richiede stesso package name e stessa firma tra telefono e orologio. Da `v0.1.1`, anche l'APK watch usa:
 
