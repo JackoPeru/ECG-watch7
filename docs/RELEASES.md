@@ -57,6 +57,8 @@ Da `v0.1.8`, il watch non salva piu' sessioni ECG da 0 campioni quando Samsung b
 
 Da `v0.1.9`, il watch ha il bottone `Policy info`: manda al telefono package name, SHA-256 firma APK, versione Health Platform, tracker Samsung disponibili e sensori Android pubblici visibili. Questi dati servono per capire se resta solo il blocco policy Samsung o se il firmware espone un fallback sensori pubblico.
 
+Da `v0.2.0`, il watch usa il sensore Android vendor pubblico rilevato nei log (`AFE4510 ECG`, type `69669`, stringType `com.samsung.sensor.ecg`) prima del Samsung Health Sensor SDK. Il fallback registra il sensore con `SensorManager`, salva `SensorEvent.values[0]`, logga il primo frame dati e stima il sample rate dalla durata reale.
+
 ## Migrazione v0.1.1
 Wear Data Layer richiede stesso package name e stessa firma tra telefono e orologio. Da `v0.1.1`, anche l'APK watch usa:
 

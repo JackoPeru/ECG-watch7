@@ -35,6 +35,7 @@ class SamsungHealthSensorBridge(private val context: Context) {
     private var hrTracker: Any? = null
     private var activeListener: Any? = null
     private var androidHrListener: SensorEventListener? = null
+    private var publicEcgListener: SensorEventListener? = null
     private val hrValues = CopyOnWriteArrayList<Int>()
 
     fun isSdkPresent(): Boolean = runCatching {
@@ -97,11 +98,14 @@ class SamsungHealthSensorBridge(private val context: Context) {
     }
 
     fun disconnect() {
+        unregisterPublicEcgFallback()
         unregisterAndroidHrFallback()
         runCatching { service?.javaClass?.getMethod("disconnectService")?.invoke(service) }
     }
 
     fun startEcg(listener: Listener, durationMillis: Long = 30_000L) {
+        if (startPublicEcgFallback(listener, durationMillis)) return
+
         val connectedService = service ?: run {
             listener.onStatus("ECG blocked: watch sensor service not connected. Phone app can store/manage ECG, but cannot read watch electrodes directly.")
             return
@@ -157,7 +161,7 @@ class SamsungHealthSensorBridge(private val context: Context) {
                             runCatching { ecgTracker?.javaClass?.getMethod("unsetEventListener")?.invoke(ecgTracker) }
                             listener.onStatus(
                                 "ECG blocked by Samsung policy/service: ${args?.firstOrNull()}. " +
-                                    "No public Android ECG fallback exists; enable Health Platform Dev mode or register package/signature with Samsung."
+                                    "Use Policy info to verify public ECG fallback, or register package/signature with Samsung."
                             )
                         }
                     }
@@ -192,6 +196,73 @@ class SamsungHealthSensorBridge(private val context: Context) {
         }.onFailure {
             listener.onStatus("ECG start failed: ${it.message}")
         }
+    }
+
+    private fun startPublicEcgFallback(listener: Listener, durationMillis: Long): Boolean {
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        val ecgSensor = findPublicEcgSensor(sensorManager) ?: return false
+        val samples = CopyOnWriteArrayList<Float>()
+        val startedAt = System.currentTimeMillis()
+        var firstValuesLogged = false
+        unregisterPublicEcgFallback()
+
+        val fallbackListener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                val value = event.values.firstOrNull() ?: return
+                if (value.isFinite()) samples.add(value)
+                if (!firstValuesLogged) {
+                    firstValuesLogged = true
+                    val preview = event.values.take(6).joinToString(",") { "%.5f".format(it) }
+                    listener.onStatus("Public ECG data active: ${event.values.size} values/event; first=[$preview].")
+                }
+                val elapsedSeconds = ((System.currentTimeMillis() - startedAt) / 1000L).toInt()
+                val secondsLeft = (durationMillis / 1000L).toInt() - elapsedSeconds
+                if (samples.size % 250 == 0) {
+                    listener.onEcgProgress(secondsLeft.coerceAtLeast(0), samples.size, 0)
+                }
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+                listener.onStatus("Public ECG accuracy changed: $accuracy.")
+            }
+        }
+
+        publicEcgListener = fallbackListener
+        val registered = sensorManager?.registerListener(
+            fallbackListener,
+            ecgSensor,
+            SensorManager.SENSOR_DELAY_FASTEST
+        ) ?: false
+        if (!registered) {
+            publicEcgListener = null
+            listener.onStatus("Public ECG fallback found but listener rejected: ${ecgSensor.name}. Trying Samsung SDK.")
+            return false
+        }
+
+        listener.onStatus("Public ECG fallback active: ${ecgSensor.name} (${ecgSensor.stringType}).")
+        main.postDelayed({
+            unregisterPublicEcgFallback()
+            val endedAt = System.currentTimeMillis()
+            if (samples.isEmpty()) {
+                listener.onStatus("Public ECG fallback ended with 0 samples. Check finger contact and BODY_SENSORS permission.")
+                return@postDelayed
+            }
+            val elapsedMs = (endedAt - startedAt).coerceAtLeast(1L)
+            val estimatedRate = ((samples.size * 1000L) / elapsedMs).toInt().coerceAtLeast(1)
+            val metadata = EcgSessionMetadata(
+                id = UUID.randomUUID().toString(),
+                startedAtEpochMillis = startedAt,
+                endedAtEpochMillis = endedAt,
+                sampleRateHz = estimatedRate,
+                sampleCount = samples.size,
+                leadOffSamples = 0,
+                deviceModel = "${Build.MANUFACTURER} ${Build.MODEL} public:${ecgSensor.name}",
+                sampleFileName = "ecg_public_${startedAt}.bin"
+            )
+            listener.onEcgComplete(metadata, samples.toFloatArray())
+            listener.onStatus("Public ECG complete: ${samples.size} samples, estimated ${estimatedRate}Hz.")
+        }, durationMillis)
+        return true
     }
 
     fun startBpResearchCapture(listener: Listener, durationMillis: Long = 20_000L) {
@@ -316,6 +387,12 @@ class SamsungHealthSensorBridge(private val context: Context) {
         androidHrListener = null
     }
 
+    private fun unregisterPublicEcgFallback() {
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        publicEcgListener?.let { sensorManager?.unregisterListener(it) }
+        publicEcgListener = null
+    }
+
     private fun supportedTrackerNames(): List<String> = runCatching {
         val capability = service?.javaClass?.getMethod("getTrackingCapability")?.invoke(service) ?: return emptyList()
         val trackers = capability.javaClass.getMethod("getSupportHealthTrackerTypes").invoke(capability) as? List<*>
@@ -408,6 +485,14 @@ class SamsungHealthSensorBridge(private val context: Context) {
     private fun readValue(point: Any, key: Any): Any? {
         val method = point.javaClass.methods.firstOrNull { it.name == "getValue" && it.parameterTypes.size == 1 }
         return method?.invoke(point, key)
+    }
+
+    private fun findPublicEcgSensor(sensorManager: SensorManager?): Sensor? {
+        if (sensorManager == null) return null
+        return sensorManager.getSensorList(Sensor.TYPE_ALL).firstOrNull {
+            it.stringType.equals("com.samsung.sensor.ecg", ignoreCase = true) ||
+                it.name.contains("ECG", ignoreCase = true)
+        }
     }
 
     private companion object {

@@ -74,5 +74,7 @@ If the watch logs `SDK_POLICY_ERROR`, enable **Health Platform** developer mode 
 
 From v0.1.8, ECG sessions are saved only after real raw samples arrive. If Samsung policy blocks ECG, the app shows the policy block and does not create a zero-sample ECG. BP research can fall back to Android's public heart-rate sensor, but public Android APIs do not expose Galaxy Watch ECG electrodes or raw PPG.
 
+On the tested Watch7 firmware, v0.2.0 can use the Android vendor sensor `com.samsung.sensor.ecg` (`AFE4510 ECG`) through `SensorManager` before falling back to Samsung Health Sensor SDK.
+
 ## Safety
 This app is wellness/research only. It does not diagnose, treat, or replace clinical ECG/BP tools.
