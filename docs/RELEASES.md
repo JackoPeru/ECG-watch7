@@ -80,6 +80,8 @@ Lo script imposta anche AppOps `BODY_SENSORS`/`ACTIVITY_RECOGNITION` su `allow`,
 ## Hermes Agent
 Da `v0.3.0`, il watch ha `Hermes snap`: raccoglie sensori pubblici live (HR, step counter, accelerometro, giroscopio, luce quando disponibili), catalogo sensori, permessi e metadati dispositivo. Il telefono riceve lo snapshot, lo combina con calibrazione/log/sessioni locali e invia JSON `hermes.health.packet.v1` al server Hermes configurato.
 
+Da `v0.3.1`, il telefono importa Health Connect per Hermes: sonno, allenamenti, passi, distanza, calorie, battito, SpO2, peso, massa grassa, massa ossea, massa magra e acqua corporea. Serve abilitare Samsung Health -> Health Connect e poi concedere i permessi `Health Connect permissions` nell'app.
+
 ## Migrazione v0.1.1
 Wear Data Layer richiede stesso package name e stessa firma tra telefono e orologio. Da `v0.1.1`, anche l'APK watch usa:
 

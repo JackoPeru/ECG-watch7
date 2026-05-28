@@ -29,6 +29,7 @@ Create a native Android + Wear OS app pair for personal use:
 - Watch app can package public Wear OS/SensorManager data into a Hermes snapshot: live HR/steps/motion/light where available, sensor catalog, permission state, app/device metadata, and blocked-source markers.
 - Phone app stores the latest watch snapshot, adds local calibration/session/log context, and POSTs `hermes.health.packet.v1` JSON to a user-configured Hermes server URL with optional bearer token.
 - Future sources should prefer official APIs: Health Connect on phone for data written by Samsung Health/other apps, Wear OS Health Services for passive/exercise metrics, Samsung Health Data SDK only with partner/dev authorization.
+- v0.3.1 reads Health Connect from the phone for 30 day windows: sleep sessions/stages, exercise sessions, steps, distance, total calories burned, heart-rate samples, oxygen saturation, weight, body fat, bone mass, lean body mass, and body water mass. Samsung Health must be configured to write/sync these categories into Health Connect.
 
 ## Safety Language
 All BP and ECG screens must identify data as wellness/research information only. Results must not claim detection, diagnosis, treatment, or medical-grade accuracy.

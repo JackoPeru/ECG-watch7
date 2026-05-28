@@ -81,3 +81,5 @@ This app is wellness/research only. It does not diagnose, treat, or replace clin
 
 ## Hermes
 From v0.3.0, the watch can send a `Hermes snap` with public live sensors and sensor catalog to the phone. The phone builds `hermes.health.packet.v1` and POSTs it to a configured Hermes endpoint with optional bearer token. For broader app/system health history, prefer Health Connect on the phone and Samsung Health Data SDK only with Samsung partner/dev authorization.
+
+From v0.3.1, the phone imports Health Connect data for Hermes: sleep, exercise, steps, distance, calories, heart rate, SpO2, weight, body fat, bone mass, lean mass, and body water mass. Enable Samsung Health -> Health Connect sharing first, then grant permissions in the app.

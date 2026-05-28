@@ -1,6 +1,5 @@
 package com.galaxywatch7.health.mobile
 
-import android.app.Activity
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
@@ -15,6 +14,10 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.activity.ComponentActivity
+import androidx.activity.result.ActivityResultLauncher
+import androidx.health.connect.client.PermissionController
+import com.galaxywatch7.health.mobile.healthconnect.HealthConnectHermesReader
 import com.galaxywatch7.health.mobile.storage.SecureHealthStore
 import com.galaxywatch7.health.mobile.ui.EcgChartView
 import com.galaxywatch7.health.shared.BpCalibration
@@ -46,8 +49,9 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
+import kotlinx.coroutines.runBlocking
 
-class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient.OnMessageReceivedListener {
+class MainActivity : ComponentActivity(), DataClient.OnDataChangedListener, MessageClient.OnMessageReceivedListener {
     private lateinit var store: SecureHealthStore
     private lateinit var status: TextView
     private lateinit var sessions: TextView
@@ -60,6 +64,8 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
     private lateinit var hermesUrl: EditText
     private lateinit var hermesToken: EditText
     private lateinit var hermesStatus: TextView
+    private lateinit var healthConnectReader: HealthConnectHermesReader
+    private lateinit var healthPermissionLauncher: ActivityResultLauncher<Set<String>>
     private val io = Executors.newSingleThreadExecutor()
     private var selectedSession: EcgSessionMetadata? = null
     private var selectedSamples: FloatArray = FloatArray(0)
@@ -71,6 +77,10 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         store = SecureHealthStore(this)
+        healthConnectReader = HealthConnectHermesReader(this)
+        healthPermissionLauncher = registerForActivityResult(PermissionController.createRequestPermissionResultContract()) { granted ->
+            hermesStatus.text = "Health Connect permissions granted: ${granted.size}/${HealthConnectHermesReader.PERMISSIONS.size}."
+        }
         setContentView(buildUi())
         refresh()
     }
@@ -168,6 +178,12 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
         })
         root.addView(primaryButton("Send Hermes packet").apply {
             setOnClickListener { sendHermesPacket() }
+        })
+        root.addView(primaryButton("Health Connect permissions").apply {
+            setOnClickListener { requestHealthConnectPermissions() }
+        })
+        root.addView(primaryButton("Import Health Connect").apply {
+            setOnClickListener { importHealthConnectForHermes() }
         })
 
         root.addView(sectionTitle("BP calibration"))
@@ -548,6 +564,35 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
         hermesStatus.text = "Hermes config saved."
     }
 
+    private fun requestHealthConnectPermissions() {
+        if (!healthConnectReader.isAvailable()) {
+            hermesStatus.text = "Health Connect ${healthConnectReader.statusLabel()}. Install/update Health Connect or use Android Settings > Health Connect."
+            return
+        }
+        healthPermissionLauncher.launch(HealthConnectHermesReader.PERMISSIONS)
+    }
+
+    private fun importHealthConnectForHermes(days: Long = 30) {
+        hermesStatus.text = "Reading Health Connect..."
+        io.execute {
+            runCatching {
+                val payload = runBlocking { healthConnectReader.readHermesPayload(days) }
+                getSharedPreferences("hermes", MODE_PRIVATE)
+                    .edit()
+                    .putString("latest_health_connect", payload.toString())
+                    .putLong("latest_health_connect_at", System.currentTimeMillis())
+                    .apply()
+                val status = payload.optString("status")
+                val granted = payload.optJSONArray("grantedPermissions")?.length() ?: 0
+                runOnUiThread {
+                    hermesStatus.text = "Health Connect import ready: $status, permissions $granted, ${days}d."
+                }
+            }.onFailure {
+                runOnUiThread { hermesStatus.text = "Health Connect import failed: ${it.message ?: it.javaClass.simpleName}" }
+            }
+        }
+    }
+
     private fun sendHermesPacket() {
         saveHermesConfig()
         val url = hermesUrl.text.toString().trim()
@@ -557,6 +602,14 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
         }
         hermesStatus.text = "Sending Hermes packet..."
         io.execute {
+            runCatching {
+                val healthPayload = runBlocking { healthConnectReader.readHermesPayload(30) }
+                getSharedPreferences("hermes", MODE_PRIVATE)
+                    .edit()
+                    .putString("latest_health_connect", healthPayload.toString())
+                    .putLong("latest_health_connect_at", System.currentTimeMillis())
+                    .apply()
+            }
             val payload = buildHermesPayload()
             runCatching {
                 val connection = (URL(url).openConnection() as HttpURLConnection).apply {
@@ -614,6 +667,7 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
         val logArray = JSONArray()
         readLogs().lines().filter { it.isNotBlank() }.take(40).forEach { logArray.put(it) }
         val watchSnapshot = prefs.getString("latest_watch_snapshot", "").orEmpty()
+        val healthConnectSnapshot = prefs.getString("latest_health_connect", "").orEmpty()
         return JSONObject()
             .put("schema", "hermes.health.packet.v1")
             .put("createdAtEpochMillis", System.currentTimeMillis())
@@ -628,6 +682,7 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
                     .put("sdk", android.os.Build.VERSION.SDK_INT)
             )
             .put("watchSnapshot", if (watchSnapshot.isBlank()) JSONObject.NULL else JSONObject(watchSnapshot))
+            .put("healthConnect", if (healthConnectSnapshot.isBlank()) JSONObject.NULL else JSONObject(healthConnectSnapshot))
             .put("bpCalibration", calibration?.let { JSONObject(HealthJson.calibrationToJson(it)) } ?: JSONObject.NULL)
             .put("ecgSessions", sessionArray)
             .put("watchLogs", logArray)

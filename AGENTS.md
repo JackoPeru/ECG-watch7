@@ -35,6 +35,7 @@ Build a personal Android + Wear OS system for Galaxy Watch7 that records ECG raw
 - Added `scripts/grant-watch-permissions.ps1` for legitimate dev-mode ADB permission grants on the user's own watch. Do not add exploit/root/signature-spoof bypasses.
 - The grant helper also sets AppOps `BODY_SENSORS`/`ACTIVITY_RECOGNITION` to `allow`. If ECG still gets `SensorManager.registerListener=false` and Samsung SDK returns `SDK_POLICY_ERROR`, the remaining block is Samsung firmware/policy rather than Android runtime permission.
 - v0.3.0 starts Hermes integration: watch can create a `Hermes snap` from public live sensors and full sensor catalog, phone stores latest snapshot, builds `hermes.health.packet.v1`, and POSTs it to a user-configured Hermes endpoint with optional bearer token.
+- v0.3.1 adds Health Connect import on phone for Samsung Health/other app data: sleep, exercise, steps, distance, calories, heart rate, SpO2, weight, body fat, bone mass, lean mass, and body water mass. Hermes payload now includes `healthConnect` snapshot. Build upgraded to AGP 8.9.1 / Gradle 8.11.1 for Health Connect 1.1.0.
 
 ## SDK Note
 Place Samsung's official `samsung-health-sensor-api.aar` at:
