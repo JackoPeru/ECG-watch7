@@ -77,6 +77,9 @@ Questo usa `pm grant`, non root o patch di sistema. Serve solo per test/dev su d
 
 Lo script imposta anche AppOps `BODY_SENSORS`/`ACTIVITY_RECOGNITION` su `allow`, per coprire il caso in cui il permesso risulti concesso ma l'operazione sensore resti bloccata.
 
+## Hermes Agent
+Da `v0.3.0`, il watch ha `Hermes snap`: raccoglie sensori pubblici live (HR, step counter, accelerometro, giroscopio, luce quando disponibili), catalogo sensori, permessi e metadati dispositivo. Il telefono riceve lo snapshot, lo combina con calibrazione/log/sessioni locali e invia JSON `hermes.health.packet.v1` al server Hermes configurato.
+
 ## Migrazione v0.1.1
 Wear Data Layer richiede stesso package name e stessa firma tra telefono e orologio. Da `v0.1.1`, anche l'APK watch usa:
 

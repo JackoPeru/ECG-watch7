@@ -24,6 +24,7 @@ object WearPaths {
     const val DATA_ECG_SESSION_PREFIX = "/ecg_session"
     const val DATA_WATCH_LOG_PREFIX = "/watch_log"
     const val DATA_WEAR_UPDATE_PREFIX = "/wear_update"
+    const val DATA_HERMES_SNAPSHOT_PREFIX = "/hermes_snapshot"
 }
 
 data class WatchLogEntry(

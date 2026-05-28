@@ -5,6 +5,7 @@
     <application
         android:allowBackup="false"
         android:label="Watch7 Health"
+        android:usesCleartextTraffic="true"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
         <provider

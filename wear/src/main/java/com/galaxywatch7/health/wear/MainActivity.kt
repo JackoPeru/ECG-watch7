@@ -7,6 +7,10 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -33,6 +37,8 @@ import com.google.android.gms.wearable.DataEvent
 import com.google.android.gms.wearable.DataEventBuffer
 import com.google.android.gms.wearable.DataMapItem
 import com.google.android.gms.wearable.Wearable
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.Executors
 
@@ -162,6 +168,9 @@ class MainActivity : Activity(), SamsungHealthSensorBridge.Listener, DataClient.
                 sync.sendLog("INFO", "manual", "Manual sync/log flush requested.")
                 onStatus("Manual sync requested.")
             }
+        })
+        root.addView(actionButton("Hermes snap").apply {
+            setOnClickListener { sendHermesSnapshot() }
         })
         root.addView(actionButton("Health Platform").apply {
             setOnClickListener { bridge.openHealthPlatformSettings(this@MainActivity) }
@@ -369,6 +378,84 @@ class MainActivity : Activity(), SamsungHealthSensorBridge.Listener, DataClient.
     private fun installUpdate() {
         val file = updateApk ?: updateCheck?.latestVersion?.let { GitHubReleaseUpdater.findDownloadedApk(this, it, "wear") }
         onStatus(if (file == null) "APK not found. Download first." else GitHubReleaseUpdater.installDownloadedApk(this, file))
+    }
+
+    private fun sendHermesSnapshot(durationMillis: Long = 8_000L) {
+        val sensorManager = getSystemService(SENSOR_SERVICE) as? SensorManager
+        if (sensorManager == null) {
+            onStatus("Hermes snapshot failed: SensorManager unavailable.")
+            return
+        }
+
+        val latest = linkedMapOf<String, JSONArray>()
+        val listeners = mutableListOf<SensorEventListener>()
+        val wantedTypes = listOf(
+            Sensor.TYPE_HEART_RATE,
+            Sensor.TYPE_STEP_COUNTER,
+            Sensor.TYPE_ACCELEROMETER,
+            Sensor.TYPE_GYROSCOPE,
+            Sensor.TYPE_LIGHT
+        )
+        val registered = mutableListOf<String>()
+        wantedTypes.mapNotNull { sensorManager.getDefaultSensor(it) }.forEach { sensor ->
+            val listener = object : SensorEventListener {
+                override fun onSensorChanged(event: SensorEvent) {
+                    latest[sensor.stringType.ifBlank { sensor.name }] = JSONArray().apply {
+                        event.values.take(6).forEach { put(it.toDouble()) }
+                    }
+                }
+
+                override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+            }
+            if (sensorManager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_NORMAL, main)) {
+                listeners.add(listener)
+                registered.add(sensor.stringType.ifBlank { sensor.name })
+            }
+        }
+
+        onStatus("Hermes snapshot collecting: ${registered.joinToString().ifBlank { "no public live sensors" }}")
+        main.postDelayed({
+            listeners.forEach { sensorManager.unregisterListener(it) }
+            val sensors = JSONArray()
+            sensorManager.getSensorList(Sensor.TYPE_ALL).forEach { sensor ->
+                sensors.put(
+                    JSONObject()
+                        .put("name", sensor.name)
+                        .put("type", sensor.type)
+                        .put("stringType", sensor.stringType)
+                        .put("vendor", sensor.vendor)
+                        .put("minDelay", sensor.minDelay)
+                        .put("maxDelay", sensor.maxDelay)
+                        .put("wake", sensor.isWakeUpSensor)
+                )
+            }
+            val live = JSONObject()
+            latest.forEach { (key, value) -> live.put(key, value) }
+            val permissions = JSONObject()
+            listOf(
+                Manifest.permission.BODY_SENSORS,
+                Manifest.permission.ACTIVITY_RECOGNITION,
+                "android.permission.health.READ_HEART_RATE",
+                "android.permission.HIGH_SAMPLING_RATE_SENSORS",
+                "com.samsung.android.hardware.sensormanager.permission.READ_ADDITIONAL_HEALTH_DATA"
+            ).forEach { permission ->
+                permissions.put(permission.substringAfterLast('.'), checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED)
+            }
+            val payload = JSONObject()
+                .put("schema", "hermes.watch.snapshot.v1")
+                .put("capturedAtEpochMillis", System.currentTimeMillis())
+                .put("source", "watch")
+                .put("packageName", packageName)
+                .put("appVersion", BuildConfig.VERSION_NAME)
+                .put("device", JSONObject().put("manufacturer", Build.MANUFACTURER).put("model", Build.MODEL).put("sdk", Build.VERSION.SDK_INT))
+                .put("liveSensors", live)
+                .put("registeredLiveSensors", JSONArray(registered))
+                .put("sensorCatalog", sensors)
+                .put("permissions", permissions)
+                .put("blocked", JSONArray().put("ecg_raw_samsung_policy").put("bp_official_samsung_policy"))
+            sync.sendHermesSnapshot(payload.toString())
+            onStatus("Hermes snapshot sent to phone: ${latest.size} live sensor groups, ${sensors.length()} catalog entries.")
+        }, durationMillis)
     }
 
     private fun receiveWearUpdateDataItem(dataItem: com.google.android.gms.wearable.DataItem) {

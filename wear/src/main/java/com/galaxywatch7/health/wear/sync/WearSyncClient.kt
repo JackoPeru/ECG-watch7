@@ -53,4 +53,11 @@ class WearSyncClient(private val context: Context) {
         request.dataMap.putLong("createdAt", entry.timestampEpochMillis)
         Wearable.getDataClient(context).putDataItem(request.asPutDataRequest().setUrgent())
     }
+
+    fun sendHermesSnapshot(payload: String) {
+        val request = PutDataMapRequest.create("${WearPaths.DATA_HERMES_SNAPSHOT_PREFIX}/${System.currentTimeMillis()}")
+        request.dataMap.putString("payload", payload)
+        request.dataMap.putLong("createdAt", System.currentTimeMillis())
+        Wearable.getDataClient(context).putDataItem(request.asPutDataRequest().setUrgent())
+    }
 }

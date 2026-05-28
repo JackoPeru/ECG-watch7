@@ -11,8 +11,8 @@ android {
         applicationId = "com.galaxywatch7.health.mobile"
         minSdk = 29
         targetSdk = 36
-        versionCode = 15
-        versionName = "0.2.4"
+        versionCode = 16
+        versionName = "0.3.0"
     }
 
     buildFeatures {

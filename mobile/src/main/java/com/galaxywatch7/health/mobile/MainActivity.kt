@@ -40,7 +40,11 @@ import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.concurrent.Executors
 
 class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient.OnMessageReceivedListener {
@@ -53,6 +57,9 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
     private lateinit var logs: TextView
     private lateinit var ecgAnalysis: TextView
     private lateinit var chart: EcgChartView
+    private lateinit var hermesUrl: EditText
+    private lateinit var hermesToken: EditText
+    private lateinit var hermesStatus: TextView
     private val io = Executors.newSingleThreadExecutor()
     private var selectedSession: EcgSessionMetadata? = null
     private var selectedSamples: FloatArray = FloatArray(0)
@@ -94,6 +101,11 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
                     event.dataItem.uri.path?.startsWith(WearPaths.DATA_WATCH_LOG_PREFIX) == true
                 ) {
                     receiveWatchLog(event)
+                }
+                if (event.type == DataEvent.TYPE_CHANGED &&
+                    event.dataItem.uri.path?.startsWith(WearPaths.DATA_HERMES_SNAPSHOT_PREFIX) == true
+                ) {
+                    receiveHermesSnapshot(event.dataItem)
                 }
             }.onFailure {
                 runOnUiThread { status.text = "Data Layer event ignored: ${it.message ?: it.javaClass.simpleName}" }
@@ -138,6 +150,25 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
         root.addView(linkStatus)
         status = cardText("Waiting for watch data.")
         root.addView(status)
+
+        root.addView(sectionTitle("Hermes"))
+        val hermesPrefs = getSharedPreferences("hermes", MODE_PRIVATE)
+        hermesUrl = input("Hermes endpoint URL", numeric = false).apply {
+            setText(hermesPrefs.getString("url", "").orEmpty())
+        }
+        hermesToken = input("Bearer token optional", numeric = false).apply {
+            setText(hermesPrefs.getString("token", "").orEmpty())
+        }
+        root.addView(hermesUrl)
+        root.addView(hermesToken)
+        hermesStatus = cardText(hermesPrefs.getString("last_status", "No Hermes sync yet.").orEmpty())
+        root.addView(hermesStatus)
+        root.addView(primaryButton("Save Hermes config").apply {
+            setOnClickListener { saveHermesConfig() }
+        })
+        root.addView(primaryButton("Send Hermes packet").apply {
+            setOnClickListener { sendHermesPacket() }
+        })
 
         root.addView(sectionTitle("BP calibration"))
         val systolic = input("Cuff systolic")
@@ -302,6 +333,23 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
             }
         }.onFailure {
             runOnUiThread { status.text = "Watch log receive failed: ${it.message ?: it.javaClass.simpleName}" }
+        }
+    }
+
+    private fun receiveHermesSnapshot(dataItem: DataItem) {
+        runCatching {
+            val raw = DataMapItem.fromDataItem(dataItem).dataMap.getString("payload") ?: return
+            getSharedPreferences("hermes", MODE_PRIVATE)
+                .edit()
+                .putString("latest_watch_snapshot", raw)
+                .putLong("latest_watch_snapshot_at", System.currentTimeMillis())
+                .apply()
+            runOnUiThread {
+                if (::hermesStatus.isInitialized) hermesStatus.text = "Watch snapshot received. Ready to send Hermes packet."
+                status.text = "Hermes watch snapshot received."
+            }
+        }.onFailure {
+            runOnUiThread { status.text = "Hermes snapshot receive failed: ${it.message ?: it.javaClass.simpleName}" }
         }
     }
 
@@ -491,6 +539,102 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
         }
     }
 
+    private fun saveHermesConfig() {
+        getSharedPreferences("hermes", MODE_PRIVATE)
+            .edit()
+            .putString("url", hermesUrl.text.toString().trim())
+            .putString("token", hermesToken.text.toString().trim())
+            .apply()
+        hermesStatus.text = "Hermes config saved."
+    }
+
+    private fun sendHermesPacket() {
+        saveHermesConfig()
+        val url = hermesUrl.text.toString().trim()
+        if (url.isBlank()) {
+            hermesStatus.text = "Hermes URL missing."
+            return
+        }
+        hermesStatus.text = "Sending Hermes packet..."
+        io.execute {
+            val payload = buildHermesPayload()
+            runCatching {
+                val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    connectTimeout = 10_000
+                    readTimeout = 20_000
+                    doOutput = true
+                    setRequestProperty("Content-Type", "application/json")
+                    setRequestProperty("User-Agent", "Watch7HealthHermes")
+                    val token = getSharedPreferences("hermes", MODE_PRIVATE).getString("token", "").orEmpty()
+                    if (token.isNotBlank()) setRequestProperty("Authorization", "Bearer $token")
+                }
+                connection.outputStream.use { it.write(payload.toString().toByteArray()) }
+                val code = connection.responseCode
+                val responseText = runCatching {
+                    val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+                    stream?.bufferedReader()?.use { it.readText().take(500) }.orEmpty()
+                }.getOrDefault("")
+                connection.disconnect()
+                val message = "Hermes POST $code ${responseText.ifBlank { "" }}".trim()
+                getSharedPreferences("hermes", MODE_PRIVATE)
+                    .edit()
+                    .putString("last_status", message)
+                    .putString("last_payload", payload.toString())
+                    .apply()
+                runOnUiThread { hermesStatus.text = message }
+            }.onFailure {
+                val message = "Hermes send failed: ${it.message ?: it.javaClass.simpleName}"
+                getSharedPreferences("hermes", MODE_PRIVATE)
+                    .edit()
+                    .putString("last_status", message)
+                    .putString("last_payload", payload.toString())
+                    .apply()
+                runOnUiThread { hermesStatus.text = message }
+            }
+        }
+    }
+
+    private fun buildHermesPayload(): JSONObject {
+        val prefs = getSharedPreferences("hermes", MODE_PRIVATE)
+        val calibration = store.readCalibration()
+        val sessionArray = JSONArray()
+        store.listEcgSessions().take(10).forEach { session ->
+            sessionArray.put(
+                JSONObject()
+                    .put("id", session.id)
+                    .put("startedAtEpochMillis", session.startedAtEpochMillis)
+                    .put("endedAtEpochMillis", session.endedAtEpochMillis)
+                    .put("sampleRateHz", session.sampleRateHz)
+                    .put("sampleCount", session.sampleCount)
+                    .put("deviceModel", session.deviceModel)
+                    .put("wellnessOnly", session.wellnessOnly)
+            )
+        }
+        val logArray = JSONArray()
+        readLogs().lines().filter { it.isNotBlank() }.take(40).forEach { logArray.put(it) }
+        val watchSnapshot = prefs.getString("latest_watch_snapshot", "").orEmpty()
+        return JSONObject()
+            .put("schema", "hermes.health.packet.v1")
+            .put("createdAtEpochMillis", System.currentTimeMillis())
+            .put("source", "phone")
+            .put("packageName", packageName)
+            .put("appVersion", BuildConfig.VERSION_NAME)
+            .put(
+                "device",
+                JSONObject()
+                    .put("manufacturer", android.os.Build.MANUFACTURER)
+                    .put("model", android.os.Build.MODEL)
+                    .put("sdk", android.os.Build.VERSION.SDK_INT)
+            )
+            .put("watchSnapshot", if (watchSnapshot.isBlank()) JSONObject.NULL else JSONObject(watchSnapshot))
+            .put("bpCalibration", calibration?.let { JSONObject(HealthJson.calibrationToJson(it)) } ?: JSONObject.NULL)
+            .put("ecgSessions", sessionArray)
+            .put("watchLogs", logArray)
+            .put("blockedSources", JSONArray().put("ecg_raw_samsung_policy").put("bp_official_samsung_policy"))
+            .put("notes", "Wellness/research data only. Not diagnostic.")
+    }
+
     private fun refreshLinkStatus() {
         Wearable.getNodeClient(this).connectedNodes
             .addOnSuccessListener { nodes ->
@@ -512,6 +656,7 @@ class MainActivity : Activity(), DataClient.OnDataChangedListener, MessageClient
                         val path = item.uri.path.orEmpty()
                         when {
                             path.startsWith(WearPaths.DATA_ECG_SESSION_PREFIX) -> receiveEcgDataItem(item.freeze())
+                            path.startsWith(WearPaths.DATA_HERMES_SNAPSHOT_PREFIX) -> receiveHermesSnapshot(item.freeze())
                             path.startsWith(WearPaths.DATA_WATCH_LOG_PREFIX) -> {
                                 val raw = DataMapItem.fromDataItem(item).dataMap.getString("entry")
                                 val entry = raw?.let { json -> runCatching { HealthJson.watchLogFromJson(json) }.getOrNull() }

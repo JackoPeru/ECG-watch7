@@ -24,6 +24,12 @@ Create a native Android + Wear OS app pair for personal use:
 - Phone app exports CSV and PDF into app documents directory.
 - Mobile and wear apps check GitHub Releases, download matching APK assets, and open the platform installer for updates.
 
+## Hermes Agent Integration
+- Blocked medical channels (Samsung ECG raw and official BP) stay out of scope unless Samsung grants package/signature access.
+- Watch app can package public Wear OS/SensorManager data into a Hermes snapshot: live HR/steps/motion/light where available, sensor catalog, permission state, app/device metadata, and blocked-source markers.
+- Phone app stores the latest watch snapshot, adds local calibration/session/log context, and POSTs `hermes.health.packet.v1` JSON to a user-configured Hermes server URL with optional bearer token.
+- Future sources should prefer official APIs: Health Connect on phone for data written by Samsung Health/other apps, Wear OS Health Services for passive/exercise metrics, Samsung Health Data SDK only with partner/dev authorization.
+
 ## Safety Language
 All BP and ECG screens must identify data as wellness/research information only. Results must not claim detection, diagnosis, treatment, or medical-grade accuracy.
 
